@@ -4,10 +4,7 @@
 
 #define MAX_CMD_LEN 1024
 
-int main(int argc, char *argv[]) {
-    (void)argc; 
-    (void)argv;
-
+int main(void) {
     char line_buf[MAX_CMD_LEN];
     
     printf("StringUtils Interactive CLI (type 'exit' to quit)\n");
@@ -22,28 +19,8 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        // Remove trailing newline character if present
-        size_t read_len = strlen(line_buf);
-        if (read_len > 0 && line_buf[read_len - 1] == '\n') {
-            line_buf[read_len - 1] = '\0';
-            read_len--;
-        }
-
-        StringView current_input_sv = sv_from_parts(line_buf, read_len);
-        current_input_sv = sv_trim(current_input_sv);
-
-        // Buffer to hold the command string we will actually parse
-        char active_cmd[MAX_CMD_LEN];
-
-        if (current_input_sv.len == 0) {
-            continue;
-        }
-        
-        // Copy the view content into a null-terminated buffer for shell_parse_line
-        snprintf(active_cmd, sizeof(active_cmd), PRIsv, EXsv(current_input_sv));
-
         StringView args[10];
-        int count = shell_parse_line(active_cmd, args, 10);
+        int count = shell_parse_line(line_buf, args, 10);
 
         if (count == 0) continue;
 
@@ -61,6 +38,7 @@ int main(int argc, char *argv[]) {
                 printf("  mac <address>                       : Validate MAC address string\n");
                 printf("  hash <string>                       : Calculate FNV-1a 32-bit hash\n");
                 printf("  split <string> <char>               : Split string by a single delimiter\n");
+                printf("  build <args...>                     : Test StaticBuilder by joining arguments\n");
                 printf("  help                                : Show this list\n");
                 printf("  exit                                o te: Quit the program\n");
                 break;
@@ -182,6 +160,20 @@ int main(int argc, char *argv[]) {
                 while (input.len > 0) {
                     StringView part = sv_split_next(&input, delim);
                     printf("  - \"" PRIsv "\"\n", EXsv(part));
+                }
+                break;
+
+            case 0xC39BF2A3: // "build"
+                {
+                    char builder_buf[256];
+                    StaticBuilder sb = sb_init(builder_buf, sizeof(builder_buf));
+                    sb_append_cstr(&sb, "Result: [");
+                    for (int i = 1; i < count; i++) {
+                        sb_append_sv(&sb, args[i]);
+                        if (i < count - 1) sb_append_cstr(&sb, ", ");
+                    }
+                    sb_append_cstr(&sb, "]");
+                    printf("" PRIsv "\n", EXsv(sb_to_view(&sb)));
                 }
                 break;
 
