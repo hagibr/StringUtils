@@ -8,7 +8,7 @@ int main(int argc, char *argv[]) {
     size_t n = 0;
 
     printf("StringUtils Interactive CLI (type 'exit' to quit)\n");
-    printf("Commands: uint8, hex, ipv4, hash, split\n\n");
+    printf("Type 'help' to see the available commands.\n\n");
 
     while (getline(&line, &n, stdin) != -1) {
         StringView args[10];
@@ -20,8 +20,67 @@ int main(int argc, char *argv[]) {
             break;
         }
 
+        /* 0. Command: help */
+        if (sv_equals_cstr(args[0], "help")) {
+            printf("Available commands:\n");
+            printf("  int64, int32, int16, int8 <val>   : Parse signed integers (supports 0x, 0b, _)\n");
+            printf("  uint64, uint32, uint16, uint8 <val>: Parse unsigned integers (supports 0x, 0b, _)\n");
+            printf("  hex <string> [limit]               : Validate hex byte or parse byte array\n");
+            printf("  ipv4 <address>                     : Validate IPv4 address string\n");
+            printf("  hash <string>                      : Calculate FNV-1a 32-bit hash\n");
+            printf("  split <string> <char>              : Split string by a single delimiter\n");
+            printf("  help                               : Show this list\n");
+            printf("  exit                               : Quit the program\n");
+            continue;
+        }
+
+        /* Signed Integer Commands */
+        if (sv_equals_cstr(args[0], "int64")) {
+            if (count < 2) { printf("Usage: int64 <value>\n"); continue; }
+            int64_t val;
+            if (sv_to_int64(args[1], &val)) printf("Result: Valid int64 -> %lld\n", (long long)val);
+            else printf("Result: Invalid int64\n");
+        }
+        else if (sv_equals_cstr(args[0], "int32")) {
+            if (count < 2) { printf("Usage: int32 <value>\n"); continue; }
+            int32_t val;
+            if (sv_to_int32(args[1], &val)) printf("Result: Valid int32 -> %d\n", val);
+            else printf("Result: Invalid int32\n");
+        }
+        else if (sv_equals_cstr(args[0], "int16")) {
+            if (count < 2) { printf("Usage: int16 <value>\n"); continue; }
+            int16_t val;
+            if (sv_to_int16(args[1], &val)) printf("Result: Valid int16 -> %d\n", val);
+            else printf("Result: Invalid int16\n");
+        }
+        else if (sv_equals_cstr(args[0], "int8")) {
+            if (count < 2) { printf("Usage: int8 <value>\n"); continue; }
+            int8_t val;
+            if (sv_to_int8(args[1], &val)) printf("Result: Valid int8 -> %d\n", (int)val);
+            else printf("Result: Invalid int8\n");
+        }
+
+        /* Unsigned Integer Commands */
+        else if (sv_equals_cstr(args[0], "uint64")) {
+            if (count < 2) { printf("Usage: uint64 <value>\n"); continue; }
+            uint64_t val;
+            if (sv_to_uint64(args[1], &val)) printf("Result: Valid uint64 -> %llu\n", (unsigned long long)val);
+            else printf("Result: Invalid uint64\n");
+        }
+        else if (sv_equals_cstr(args[0], "uint32")) {
+            if (count < 2) { printf("Usage: uint32 <value>\n"); continue; }
+            uint32_t val;
+            if (sv_to_uint32(args[1], &val)) printf("Result: Valid uint32 -> %u\n", val);
+            else printf("Result: Invalid uint32\n");
+        }
+        else if (sv_equals_cstr(args[0], "uint16")) {
+            if (count < 2) { printf("Usage: uint16 <value>\n"); continue; }
+            uint16_t val;
+            if (sv_to_uint16(args[1], &val)) printf("Result: Valid uint16 -> %u\n", val);
+            else printf("Result: Invalid uint16\n");
+        }
         /* 1. Command: uint8 <value> */
-        if (sv_equals_cstr(args[0], "uint8")) {
+        else if (sv_equals_cstr(args[0], "uint8")) {
             if (count < 2) {
                 printf("Usage: uint8 <value>\n");
                 continue;
