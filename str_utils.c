@@ -455,3 +455,90 @@ bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...) {
 StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len};
 }
+
+/* --- Regex Utilities (Rob Pike's implementation) --- */
+
+/**
+ * @brief Internal helper function to match a regular expression against a text,
+ * assuming the match starts at the current 'text' position.
+ * 
+ * Design: This is a recursive function that tries to match the current regex
+ * character(s) against the current text character(s).
+ * 
+ * Early Exit / Failure Conditions:
+ * - If regex is exhausted (re_l == 0), it's a match.
+ * - If '*' quantifier is found, delegates to match_star.
+ * - If '$' is found and regex is exhausted, matches if text is also exhausted.
+ * - If text is exhausted but regex is not, it's a mismatch (unless regex is '$').
+ * - If characters don't match (and not '.'), it's a mismatch.
+ */
+static bool match_here(const char *re, size_t re_l, StringView text);
+
+/**
+ * @brief Internal helper function to handle the '*' quantifier.
+ * Matches 'c' zero or more times, then attempts to match the rest of the regex.
+ * 
+ * Design: It iteratively tries to match the rest of the regex (re + 2) against
+ * the current text, then against the text after consuming 'c', and so on.
+ * This is a backtracking approach.
+ */
+static bool match_star(char c, const char *re, size_t re_l, StringView text) {
+    do {
+        // Try to match the rest of the regex (after 'c*') against the current text
+        if (match_here(re, re_l, text)) return true;
+        
+        // If 'c' cannot be matched against the current text, or text is exhausted,
+        // then 'c*' cannot consume more, so stop trying.
+        if (text.len == 0 || (c != '.' && *text.data != c)) break;
+        
+        // Consume 'c' and try again
+        text.data++;
+        text.len--;
+    } while (true);
+    return false;
+}
+
+static bool match_here(const char *re, size_t re_l, StringView text) {
+    // If the regex is exhausted, we've found a match
+    if (re_l == 0) return true;
+
+    // If the next regex character is '*', handle it with match_star
+    if (re_l >= 2 && re[1] == '*') {
+        return match_star(re[0], re + 2, re_l - 2, text);
+    }
+
+    // If regex is '$' and it's the last character, match only if text is exhausted
+    if (re_l == 1 && re[0] == '$') {
+        return text.len == 0;
+    }
+
+    // If text is not exhausted and current regex char matches current text char (or regex char is '.')
+    if (text.len > 0 && (re[0] == '.' || re[0] == *text.data)) {
+        // Recursively match the rest of the regex against the rest of the text
+        return match_here(re + 1, re_l - 1, (StringView){text.data + 1, text.len - 1});
+    }
+
+    // No match found
+    return false;
+}
+
+/**
+ * @brief Public function to match a StringView against a simple regular expression.
+ * 
+ * Design: Handles '^' for anchoring the match to the beginning of the text.
+ * If no '^' is present, it iterates through the text, attempting to match the
+ * regex at each possible starting position. This is a brute-force search.
+ */
+bool sv_match(const char *regexp, size_t re_len, StringView text) {
+    if (re_len > 0 && regexp[0] == '^') return match_here(regexp + 1, re_len - 1, text);
+    
+    // Try matching at every position in the text
+    // Loop continues as long as there's text to try matching against.
+    while (true) {
+        if (match_here(regexp, re_len, text)) return true;
+        if (text.len == 0) break; // No more text to try
+        text.data++;
+        text.len--;
+    }
+    return false;
+}

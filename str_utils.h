@@ -183,6 +183,22 @@ bool          sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
 StringView    sb_to_view(const StaticBuilder *sb);
 
 /**
+ * @brief Matches a StringView against a simple regular expression.
+ * Supports '.', '*', '^', '$'.
+ * - '.' matches any single character.
+ * - '*' matches zero or more occurrences of the preceding character.
+ * - '^' matches the beginning of the text.
+ * - '$' matches the end of the text.
+ * 
+ * Example:
+ * sv_match(sv_from_cstr("a.c"), 3, sv_from_cstr("abc")) -> true
+ * sv_match(sv_from_cstr("a*b"), 3, sv_from_cstr("aaab")) -> true
+ * sv_match(sv_from_cstr("^abc"), 4, sv_from_cstr("abcdef")) -> true
+ * sv_match(sv_from_cstr("def$"), 4, sv_from_cstr("abcdef")) -> true
+ */
+bool sv_match(const char *regexp, size_t re_len, StringView text);
+
+/**
  * @brief Macros for printing StringViews using printf-family functions.
  * PRIsv provides the format string "%.*s", and EXsv expands the structure into 
  * the required (length, data) arguments.

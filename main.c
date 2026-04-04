@@ -44,6 +44,7 @@ int main(void) {
                 printf("  mac <address>                       : Validate MAC address string\n");
                 printf("  hash <string>                       : Calculate FNV-1a 32-bit hash\n");
                 printf("  split <string> <char>               : Split string by a single delimiter\n");
+                printf("  regex|match <pattern> <text>        : Match text against a simple regex pattern\n");
                 printf("  build <args...>                     : Test StaticBuilder by joining arguments\n");
                 printf("  help, ?                             : Show this list\n");
                 printf("  exit, quit                          : Quit the program\n");
@@ -167,6 +168,13 @@ int main(void) {
                     StringView part = sv_split_next(&input, delim);
                     printf("  - \"" PRIsv "\"\n", EXsv(part));
                 }
+                break;
+
+            case 0xeaff1078: // "regex"
+            case 0x7E202F96: // "match"
+                if (count < 3) { printf("Usage: regex|match <pattern> <text>\n"); break; }
+                bool matched = sv_match(args[1].data, args[1].len, args[2]);
+                printf("Result: %s\n", matched ? "true" : "false");
                 break;
 
             case 0xc39bf2a3: // "build"
