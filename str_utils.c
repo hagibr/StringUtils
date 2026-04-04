@@ -2,7 +2,7 @@
 #include <limits.h>
 #include <float.h>
 
-/* --- StringView Básico --- */
+/* --- Basic StringView --- */
 
 StringView sv_from_parts(const char *data, size_t len) { return (StringView){data, len}; }
 StringView sv_from_cstr(const char *s) { return (StringView){s, s ? strlen(s) : 0}; }
@@ -47,7 +47,7 @@ uint32_t sv_hash(StringView sv) {
     return hash;
 }
 
-/* --- Motor de Conversão Inteira --- */
+/* --- Internal Integer Conversion Engine --- */
 
 static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
     if (sv.len == 0) return false;
@@ -70,10 +70,10 @@ static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
         uint8_t digit;
         if (c >= '0' && c <= '9') digit = c - '0';
         else if (base == 16 && (c|32) >= 'a' && (c|32) <= 'f') digit = (c|32) - 'a' + 10;
-        else return false; // Falha estrita em qualquer char inválido
+        else return false; // Strict failure on any invalid character
 
-        if (digit >= base) return false; // Ex: '2' em binário
-        if (val > (UINT64_MAX / base)) return false; // Overflow
+        if (digit >= (uint8_t)base) return false; // e.g., '2' in binary
+        if (val > (UINT64_MAX / (uint64_t)base)) return false; // Overflow
         val = (val * base) + digit;
         has_digits = true;
     }
@@ -81,7 +81,7 @@ static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
     *result = val; return true;
 }
 
-// Wrappers com Range Check
+/* --- Wrappers with Range Check --- */
 bool sv_to_int64(StringView sv, int64_t *res) {
     uint64_t v; bool n; if (!sv_internal_to_u64(sv, &v, &n)) return false;
     if (!n && v > (uint64_t)INT64_MAX) return false;
@@ -90,9 +90,9 @@ bool sv_to_int64(StringView sv, int64_t *res) {
 }
 bool sv_to_int32(StringView sv, int32_t *res) { int64_t v; return (sv_to_int64(sv, &v) && v <= INT32_MAX && v >= INT32_MIN) ? (*res = (int32_t)v, true) : false; }
 bool sv_to_uint8(StringView sv, uint8_t *res)   { uint64_t v; bool n; return (sv_internal_to_u64(sv, &v, &n) && !n && v <= 255) ? (*res = (uint8_t)v, true) : false; }
-/* ... (outros tamanhos seguem a mesma lógica de range check) ... */
+/* ... (other sizes follow the same range check logic) ... */
 
-/* --- Ponto Flutuante Estrito --- */
+/* --- Strict Floating Point --- */
 
 bool sv_to_float64(StringView sv, double *res) {
     if (sv.len == 0) return false;
@@ -118,7 +118,7 @@ bool sv_to_float32(StringView sv, float *res) {
     double v; return (sv_to_float64(sv, &v) && v <= FLT_MAX && v >= -FLT_MAX) ? (*res = (float)v, true) : false; 
 }
 
-/* --- Hex e Protocolos --- */
+/* --- Hex and Protocols --- */
 
 bool sv_hex_to_uint8(StringView sv, uint8_t *res) {
     if (sv.len == 0 || sv.len > 2) return false;
@@ -169,7 +169,7 @@ int shell_parse_line(char *line, StringView argv[], int max_args) {
     int argc = 0;
     while (argc < max_args && input.len > 0) {
         if (input.data[0] == '"') {
-            input.data++; input.len--; // Pula "
+            input.data++; input.len--; // Skip "
             StringView arg = sv_split_next(&input, '"');
             argv[argc++] = arg;
         } else {
