@@ -7,8 +7,8 @@
 int main(void) {
     char line_buf[MAX_CMD_LEN];
     
-    printf("StringUtils Interactive CLI (type 'exit' to quit)\n");
-    printf("Type 'help' to see the available commands.\n\n");
+    printf("StringUtils Interactive CLI (type 'exit'/'quit' to quit)\n");
+    printf("Type 'help'/'?' to see the available commands.\n\n");
 
     while (1) {
         printf("> ");
@@ -19,16 +19,22 @@ int main(void) {
             break;
         }
 
+        // Parsing the line and splitting into several StringViews (max 10)
         StringView args[10];
         int count = shell_parse_line(line_buf, args, 10);
 
+        // Empty line
         if (count == 0) continue;
 
+        // Now we execute thecommands. Optimizing by using the hash functions.
         switch (sv_hash(args[0])) {
             case 0xcded1a85: // "exit"
+            case 0x47878736: // "quit"
+                printf("Exiting.\n");
                 return 0;
 
             case 0x3871a3fa: // "help"
+            case 0x3a0cb08e: // "?""
                 printf("Available commands:\n");
                 printf("  int64, int32, int16, int8 <val>     : Parse signed integers (supports 0x, 0b, _)\n");
                 printf("  uint64, uint32, uint16, uint8 <val> : Parse unsigned integers (supports 0x, 0b, _)\n");
@@ -39,8 +45,8 @@ int main(void) {
                 printf("  hash <string>                       : Calculate FNV-1a 32-bit hash\n");
                 printf("  split <string> <char>               : Split string by a single delimiter\n");
                 printf("  build <args...>                     : Test StaticBuilder by joining arguments\n");
-                printf("  help                                : Show this list\n");
-                printf("  exit                                o te: Quit the program\n");
+                printf("  help, ?                             : Show this list\n");
+                printf("  exit, quit                          : Quit the program\n");
                 break;
 
             case 0x03d22364: // "int64"
@@ -163,7 +169,7 @@ int main(void) {
                 }
                 break;
 
-            case 0xC39BF2A3: // "build"
+            case 0xc39bf2a3: // "build"
                 {
                     char builder_buf[256];
                     StaticBuilder sb = sb_init(builder_buf, sizeof(builder_buf));
