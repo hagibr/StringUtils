@@ -2,165 +2,194 @@
 #include <stdlib.h>
 #include "str_utils.h"
 
-int main(int argc, char *argv[]) {
-    (void)argc; (void)argv;
-    char *line = NULL;
-    size_t n = 0;
+#define MAX_CMD_LEN 1024
 
+int main(int argc, char *argv[]) {
+    (void)argc; 
+    (void)argv;
+
+    char line_buf[MAX_CMD_LEN];
+    
     printf("StringUtils Interactive CLI (type 'exit' to quit)\n");
     printf("Type 'help' to see the available commands.\n\n");
 
-    while (getline(&line, &n, stdin) != -1) {
-        StringView args[10];
-        int count = shell_parse_line(line, args, 10);
+    while (1) {
+        printf("> ");
+        fflush(stdout); // Ensure the prompt is displayed immediately
 
-        if (count == 0) continue;
-
-        if (sv_equals_cstr(args[0], "exit")) {
+        if (!fgets(line_buf, sizeof(line_buf), stdin)) {
+            printf("\nExiting.\n");
             break;
         }
 
-        /* 0. Command: help */
-        if (sv_equals_cstr(args[0], "help")) {
-            printf("Available commands:\n");
-            printf("  int64, int32, int16, int8 <val>   : Parse signed integers (supports 0x, 0b, _)\n");
-            printf("  uint64, uint32, uint16, uint8 <val>: Parse unsigned integers (supports 0x, 0b, _)\n");
-            printf("  hex <string> [limit]               : Validate hex byte or parse byte array\n");
-            printf("  ipv4 <address>                     : Validate IPv4 address string\n");
-            printf("  hash <string>                      : Calculate FNV-1a 32-bit hash\n");
-            printf("  split <string> <char>              : Split string by a single delimiter\n");
-            printf("  help                               : Show this list\n");
-            printf("  exit                               : Quit the program\n");
+        // Remove trailing newline character if present
+        size_t read_len = strlen(line_buf);
+        if (read_len > 0 && line_buf[read_len - 1] == '\n') {
+            line_buf[read_len - 1] = '\0';
+            read_len--;
+        }
+
+        StringView current_input_sv = sv_from_parts(line_buf, read_len);
+        current_input_sv = sv_trim(current_input_sv);
+
+        // Buffer to hold the command string we will actually parse
+        char active_cmd[MAX_CMD_LEN];
+
+        if (current_input_sv.len == 0) {
             continue;
         }
+        
+        // Copy the view content into a null-terminated buffer for shell_parse_line
+        snprintf(active_cmd, sizeof(active_cmd), PRIsv, EXsv(current_input_sv));
 
-        /* Signed Integer Commands */
-        if (sv_equals_cstr(args[0], "int64")) {
-            if (count < 2) { printf("Usage: int64 <value>\n"); continue; }
-            int64_t val;
-            if (sv_to_int64(args[1], &val)) printf("Result: Valid int64 -> %lld\n", (long long)val);
-            else printf("Result: Invalid int64\n");
-        }
-        else if (sv_equals_cstr(args[0], "int32")) {
-            if (count < 2) { printf("Usage: int32 <value>\n"); continue; }
-            int32_t val;
-            if (sv_to_int32(args[1], &val)) printf("Result: Valid int32 -> %d\n", val);
-            else printf("Result: Invalid int32\n");
-        }
-        else if (sv_equals_cstr(args[0], "int16")) {
-            if (count < 2) { printf("Usage: int16 <value>\n"); continue; }
-            int16_t val;
-            if (sv_to_int16(args[1], &val)) printf("Result: Valid int16 -> %d\n", val);
-            else printf("Result: Invalid int16\n");
-        }
-        else if (sv_equals_cstr(args[0], "int8")) {
-            if (count < 2) { printf("Usage: int8 <value>\n"); continue; }
-            int8_t val;
-            if (sv_to_int8(args[1], &val)) printf("Result: Valid int8 -> %d\n", (int)val);
-            else printf("Result: Invalid int8\n");
-        }
+        StringView args[10];
+        int count = shell_parse_line(active_cmd, args, 10);
 
-        /* Unsigned Integer Commands */
-        else if (sv_equals_cstr(args[0], "uint64")) {
-            if (count < 2) { printf("Usage: uint64 <value>\n"); continue; }
-            uint64_t val;
-            if (sv_to_uint64(args[1], &val)) printf("Result: Valid uint64 -> %llu\n", (unsigned long long)val);
-            else printf("Result: Invalid uint64\n");
-        }
-        else if (sv_equals_cstr(args[0], "uint32")) {
-            if (count < 2) { printf("Usage: uint32 <value>\n"); continue; }
-            uint32_t val;
-            if (sv_to_uint32(args[1], &val)) printf("Result: Valid uint32 -> %u\n", val);
-            else printf("Result: Invalid uint32\n");
-        }
-        else if (sv_equals_cstr(args[0], "uint16")) {
-            if (count < 2) { printf("Usage: uint16 <value>\n"); continue; }
-            uint16_t val;
-            if (sv_to_uint16(args[1], &val)) printf("Result: Valid uint16 -> %u\n", val);
-            else printf("Result: Invalid uint16\n");
-        }
-        /* 1. Command: uint8 <value> */
-        else if (sv_equals_cstr(args[0], "uint8")) {
-            if (count < 2) {
-                printf("Usage: uint8 <value>\n");
-                continue;
-            }
-            uint8_t val;
-            if (sv_to_uint8(args[1], &val)) {
-                printf("Result: Valid uint8 -> %u\n", val);
-            } else {
-                printf("Result: Invalid uint8\n");
-            }
-        }
-        /* 2. Command: hex <string> [max_limit] */
-        else if (sv_equals_cstr(args[0], "hex")) {
-            if (count == 2) {
-                // Single byte hex validation
-                uint8_t val;
-                if (sv_hex_to_uint8(args[1], &val)) {
-                    printf("Result: Valid hex byte -> %u (0x%02X)\n", val, val);
-                } else {
-                    printf("Result: Invalid hex byte\n");
-                }
-            } else if (count == 3) {
-                // Hex array with capacity limit
-                uint32_t limit;
-                if (!sv_to_uint32(args[2], &limit)) {
-                    printf("Error: Invalid limit value\n");
-                    continue;
-                }
-                if (limit > 256) limit = 256;
+        if (count == 0) continue;
 
-                uint8_t buffer[256];
-                size_t actual_size = (size_t)limit;
-                
-                if (sv_hex_to_uint8_array(args[1], buffer, &actual_size)) {
-                    printf("Result: Valid hex array (%zu bytes): ", actual_size);
-                    for (size_t i = 0; i < actual_size; i++) {
-                        printf("%02X ", buffer[i]);
-                    }
-                    printf("\n");
-                } else {
-                    printf("Result: Invalid hex string or limit exceeded\n");
+        switch (sv_hash(args[0])) {
+            case 0xcded1a85: // "exit"
+                return 0;
+
+            case 0x3871a3fa: // "help"
+                printf("Available commands:\n");
+                printf("  int64, int32, int16, int8 <val>     : Parse signed integers (supports 0x, 0b, _)\n");
+                printf("  uint64, uint32, uint16, uint8 <val> : Parse unsigned integers (supports 0x, 0b, _)\n");
+                printf("  float64, float32 <val>              : Parse floating-point numbers\n");
+                printf("  hex <string> [limit]                : Validate hex byte or parse byte array\n");
+                printf("  ipv4 <address>                      : Validate IPv4 address string\n");
+                printf("  mac <address>                       : Validate MAC address string\n");
+                printf("  hash <string>                       : Calculate FNV-1a 32-bit hash\n");
+                printf("  split <string> <char>               : Split string by a single delimiter\n");
+                printf("  help                                : Show this list\n");
+                printf("  exit                                o te: Quit the program\n");
+                break;
+
+            case 0x03d22364: // "int64"
+                if (count < 2) { printf("Usage: int64 <value>\n"); break; }
+                int64_t v64;
+                if (sv_to_int64(args[1], &v64)) printf("Result: Valid int64 -> %lld\n", (long long)v64);
+                else printf("Result: Invalid int64\n");
+                break;
+
+            case 0xfbdee2bf: // "int32"
+                if (count < 2) { printf("Usage: int32 <value>\n"); break; }
+                int32_t v32;
+                if (sv_to_int32(args[1], &v32)) printf("Result: Valid int32 -> %d\n", v32);
+                else printf("Result: Invalid int32\n");
+                break;
+
+            case 0x07e372d1: // "int16"
+                if (count < 2) { printf("Usage: int16 <value>\n"); break; }
+                int16_t v16;
+                if (sv_to_int16(args[1], &v16)) printf("Result: Valid int16 -> %d\n", v16);
+                else printf("Result: Invalid int16\n");
+                break;
+
+            case 0x6491fa92: // "int8"
+                if (count < 2) { printf("Usage: int8 <value>\n"); break; }
+                int8_t v8;
+                if (sv_to_int8(args[1], &v8)) printf("Result: Valid int8 -> %d\n", (int)v8);
+                else printf("Result: Invalid int8\n");
+                break;
+
+            case 0xaea00813: // "uint64"
+                if (count < 2) { printf("Usage: uint64 <value>\n"); break; }
+                uint64_t u64;
+                if (sv_to_uint64(args[1], &u64)) printf("Result: Valid uint64 -> %llu\n", (unsigned long long)u64);
+                else printf("Result: Invalid uint64\n");
+                break;
+
+            case 0x32940bec: // "uint32"
+                if (count < 2) { printf("Usage: uint32 <value>\n"); break; }
+                uint32_t u32;
+                if (sv_to_uint32(args[1], &u32)) printf("Result: Valid uint32 -> %u\n", u32);
+                else printf("Result: Invalid uint32\n");
+                break;
+
+            case 0xae8ebef2: // "uint16"
+                if (count < 2) { printf("Usage: uint16 <value>\n"); break; }
+                uint16_t u16;
+                if (sv_to_uint16(args[1], &u16)) printf("Result: Valid uint16 -> %u\n", u16);
+                else printf("Result: Invalid uint16\n");
+                break;
+
+            case 0x199df2db: // "uint8"
+                if (count < 2) { printf("Usage: uint8 <value>\n"); break; }
+                uint8_t u8;
+                if (sv_to_uint8(args[1], &u8)) printf("Result: Valid uint8 -> %u\n", u8);
+                else printf("Result: Invalid uint8\n");
+                break;
+
+            case 0x7c980e47: // "float64"
+                if (count < 2) { printf("Usage: float64 <value>\n"); break; }
+                double f64;
+                if (sv_to_float64(args[1], &f64)) printf("Result: Valid float64 -> %lf\n", f64);
+                else printf("Result: Invalid float64\n");
+                break;
+
+            case 0xe89f7410: // "float32"
+                if (count < 2) { printf("Usage: float32 <value>\n"); break; }
+                float f32;
+                if (sv_to_float32(args[1], &f32)) printf("Result: Valid float32 -> %f\n", f32);
+                else printf("Result: Invalid float32\n");
+                break;
+
+            case 0xfeb49d4a: // "hex"
+                if (count == 2) {
+                    uint8_t val;
+                    if (sv_hex_to_uint8(args[1], &val)) printf("Result: Valid hex byte -> %u (0x%02X)\n", val, val);
+                    else printf("Result: Invalid hex byte\n");
+                } else if (count == 3) {
+                    uint32_t limit;
+                    if (!sv_to_uint32(args[2], &limit)) { printf("Error: Invalid limit\n"); break; }
+                    if (limit > 256) limit = 256;
+                    uint8_t buf[256]; size_t sz = (size_t)limit;
+                    if (sv_hex_to_uint8_array(args[1], buf, &sz)) {
+                        printf("Result: Valid hex array (%zu bytes): ", sz);
+                        for (size_t i = 0; i < sz; i++) printf("%02X ", buf[i]);
+                        printf("\n");
+                    } else printf("Result: Invalid hex string or limit exceeded\n");
+                } else printf("Usage: hex <string> [limit]\n");
+                break;
+
+            case 0x285cc21e: // "ipv4"
+                if (count < 2) { printf("Usage: ipv4 <addr>\n"); break; }
+                uint8_t ip[4];
+                if (sv_parse_ipv4(args[1], ip)) printf("Result: Valid IPv4 -> %u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
+                else printf("Result: Invalid IPv4\n");
+                break;
+
+            case 0xeca30428: // "mac"
+                if (count < 2) { printf("Usage: mac <addr>\n"); break; }
+                uint8_t mac[6];
+                if (sv_parse_mac(args[1], mac)) {
+                    printf("Result: Valid MAC -> %02X:%02X:%02X:%02X:%02X:%02X\n",
+                           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                } else printf("Result: Invalid MAC\n");
+                break;
+
+            case 0xcec577d1: // "hash"
+                if (count < 2) { printf("Usage: hash <string>\n"); break; }
+                printf("Result: FNV-1a Hash -> 0x%08X\n", sv_hash(args[1]));
+                break;
+
+            case 0x87b82de3: // "split"
+                if (count < 3 || args[2].len != 1) { printf("Usage: split <str> <char>\n"); break; }
+                char delim = args[2].data[0];
+                StringView input = args[1];
+                printf("Splitting \"" PRIsv "\" by '%c':\n", EXsv(input), delim);
+                while (input.len > 0) {
+                    StringView part = sv_split_next(&input, delim);
+                    printf("  - \"" PRIsv "\"\n", EXsv(part));
                 }
-            } else {
-                printf("Usage: hex <string> OR hex <string> <limit>\n");
-            }
-        }
-        /* 3. Command: ipv4 <address> */
-        else if (sv_equals_cstr(args[0], "ipv4")) {
-            if (count < 2) { printf("Usage: ipv4 <addr>\n"); continue; }
-            uint8_t ip[4];
-            if (sv_parse_ipv4(args[1], ip)) {
-                printf("Result: Valid IPv4 -> %u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
-            } else {
-                printf("Result: Invalid IPv4\n");
-            }
-        }
-        /* 4. Command: hash <string> */
-        else if (sv_equals_cstr(args[0], "hash")) {
-            if (count < 2) { printf("Usage: hash <string>\n"); continue; }
-            printf("Result: FNV-1a Hash -> 0x%08X\n", sv_hash(args[1]));
-        }
-        /* 5. Command: split <string> <delimiter> */
-        else if (sv_equals_cstr(args[0], "split")) {
-            if (count < 3) { printf("Usage: split <string> <char>\n"); continue; }
-            if (args[2].len != 1) {
-                printf("Error: Delimiter must be exactly one character.\n");
-                continue;
-            }
-            char delim = args[2].data[0];
-            StringView input = args[1];
-            printf("Splitting \"" PRIsv "\" by '%c':\n", EXsv(input), delim);
-            while (input.len > 0) {
-                StringView part = sv_split_next(&input, delim);
-                printf("  - \"" PRIsv "\"\n", EXsv(part));
-            }
-        } else {
-            printf("Unknown command: " PRIsv "\n", EXsv(args[0]));
+                break;
+
+            default:
+                printf("Unknown command: " PRIsv "\n", EXsv(args[0]));
+                break;
         }
     }
 
-    free(line);
     return 0;
 }
