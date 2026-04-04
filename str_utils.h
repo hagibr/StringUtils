@@ -182,7 +182,6 @@ bool          sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
  */
 StringView    sb_to_view(const StaticBuilder *sb);
 
-/* Macros for friendly printf */
 /**
  * @brief Macros for printing StringViews using printf-family functions.
  * PRIsv provides the format string "%.*s", and EXsv expands the structure into 
