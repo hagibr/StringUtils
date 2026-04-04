@@ -83,3 +83,4 @@ This project is provided under the MIT License. Feel free to use it in your comm
 
 ---
 *Maintained by Alexandre - High-performance string utilities for restricted environments.*
+*Made with the help of Gemini Code Assist.*
