@@ -201,33 +201,27 @@ bool sv_to_int64(StringView sv, int64_t *res) {
 
 bool sv_to_int32(StringView sv, int32_t *res) {
     int64_t v;
-    if (sv_to_int64(sv, &v)) {
-        if (v <= INT32_MAX && v >= INT32_MIN) {
-            *res = (int32_t)v;
-            return true;
-        }
+    if (sv_to_int64(sv, &v) && v <= INT32_MAX && v >= INT32_MIN) {
+        *res = (int32_t)v;
+        return true;
     }
     return false;
 }
 
 bool sv_to_int16(StringView sv, int16_t *res) {
     int64_t v;
-    if (sv_to_int64(sv, &v)) {
-        if (v <= INT16_MAX && v >= INT16_MIN) {
-            *res = (int16_t)v;
-            return true;
-        }
+    if (sv_to_int64(sv, &v) && v <= INT16_MAX && v >= INT16_MIN) {
+        *res = (int16_t)v;
+        return true;
     }
     return false;
 }
 
 bool sv_to_int8(StringView sv, int8_t *res) {
     int64_t v;
-    if (sv_to_int64(sv, &v)) {
-        if (v <= INT8_MAX && v >= INT8_MIN) {
-            *res = (int8_t)v;
-            return true;
-        }
+    if (sv_to_int64(sv, &v) && v <= INT8_MAX && v >= INT8_MIN) {
+        *res = (int8_t)v;
+        return true;
     }
     return false;
 }
@@ -301,11 +295,9 @@ bool sv_to_float64(StringView sv, double *res) {
 
 bool sv_to_float32(StringView sv, float *res) {
     double v;
-    if (sv_to_float64(sv, &v)) {
-        if (v <= FLT_MAX && v >= -FLT_MAX) {
-            *res = (float)v;
-            return true;
-        }
+    if (sv_to_float64(sv, &v) && v <= FLT_MAX && v >= -FLT_MAX) {
+        *res = (float)v;
+        return true;
     }
     return false;
 }
@@ -323,10 +315,8 @@ bool sv_hex_to_uint8(StringView sv, uint8_t *res) {
         val <<= 4;
         if (c >= '0' && c <= '9') {
             val |= (uint32_t)(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            val |= (uint32_t)(c - 'a' + 10);
-        } else if (c >= 'A' && c <= 'F') {
-            val |= (uint32_t)(c - 'A' + 10);
+        } else if ((c|32) >= 'a' && (c|32) <= 'f') {
+            val |= (uint32_t)((c|32) - 'a' + 10);
         } else {
             return false; // Invalid hex digit
         }
@@ -365,16 +355,20 @@ bool sv_parse_ipv4(StringView sv, uint8_t ip[4]) {
 /**
  * Flexible separator detection. 
  * It looks at the character at index 2 to determine the delimiter used 
- * (standardizes on ':' or '-' automatically).
+ * (enforces ':' or '-' consistently).
  */
 bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
     if (sv.len != 17) return false;
+    char delim = sv.data[2];
+    if (delim != ':' && delim != '-') return false;
+
     StringView in = sv;
     for (int i = 0; i < 6; i++) {
-        StringView p = sv_split_next(&in, (i < 5) ? sv.data[2+(i*3)] : '\0');
+        if (i < 5 && sv.data[2 + (i * 3)] != delim) return false;
+        StringView p = sv_split_next(&in, (i < 5) ? delim : '\0');
         if (!sv_hex_to_uint8(p, &mac[i])) return false;
     }
-    return true;
+    return in.len == 0;
 }
 
 /* --- Shell Parsing --- */
@@ -383,7 +377,9 @@ bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
  * A non-destructive zero-copy parser.
  * Unlike strtok, it does not modify the input buffer. 
  * It handles quoted arguments by detecting the starting '"' and using 
- * sv_split_next to "jump" to the closing quote.
+ * sv_split_next to "jump" to the closing quote. Doesn't have an escaped
+ * quote capability, because it would either modify the original string
+ * or need a buffer allocation. 
  */
 int shell_parse_line(char *line, StringView argv[], int max_args) {
     StringView input = sv_trim(sv_from_cstr(line));
@@ -462,11 +458,11 @@ StringView sb_to_view(const StaticBuilder *sb) {
  * @brief Internal helper function to match a regular expression against a text,
  * assuming the match starts at the current 'text' position.
  * 
- * Design: This is a recursive function that tries to match the current regex
+ * This is a recursive function that tries to match the current regex
  * character(s) against the current text character(s).
  * 
  * Early Exit / Failure Conditions:
- * - If regex is exhausted (re_l == 0), it's a match.
+ * - If regex is exhausted (len == 0), it's a match.
  * - If '*' quantifier is found, delegates to match_star.
  * - If '$' is found and regex is exhausted, matches if text is also exhausted.
  * - If text is exhausted but regex is not, it's a mismatch (unless regex is '$').
@@ -478,7 +474,7 @@ static bool match_here(StringView pattern, StringView text);
  * @brief Internal helper function to handle the '*' quantifier.
  * Matches 'c' zero or more times, then attempts to match the rest of the regex.
  * 
- * Design: It iteratively tries to match the rest of the regex (re + 2) against
+ * It iteratively tries to match the rest of the regex (re + 2) against
  * the current text, then against the text after consuming 'c', and so on.
  * This is a backtracking approach.
  */
@@ -525,7 +521,7 @@ static bool match_here(StringView pattern, StringView text) {
 /**
  * @brief Public function to match a StringView against a simple regular expression.
  * 
- * Design: Handles '^' for anchoring the match to the beginning of the text.
+ * Handles '^' for anchoring the match to the beginning of the text.
  * If no '^' is present, it iterates through the text, attempting to match the
  * regex at each possible starting position. This is a brute-force search.
  *
