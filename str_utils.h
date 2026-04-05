@@ -54,13 +54,13 @@ StringView sv_from_cstr(const char *s);
  * @brief Compares two StringViews for equality.
  * Example: sv_equals(sv_from_cstr("a"), sv_from_cstr("a")) -> true
  */
-bool       sv_equals(StringView a, StringView b);
+bool sv_equals(StringView a, StringView b);
 
 /**
  * @brief Compares a StringView with a null-terminated string.
  * Example: sv_equals_cstr(sv, "admin")
  */
-bool       sv_equals_cstr(StringView a, const char *b);
+bool sv_equals_cstr(StringView a, const char *b);
 
 /**
  * @brief Removes leading and trailing whitespace.
@@ -80,7 +80,7 @@ StringView sv_split_next(StringView *input, char delim);
  * @brief Calculates a 32-bit FNV-1a hash of the StringView.
  * Example: uint32_t h = sv_hash(sv_from_cstr("key"));
  */
-uint32_t   sv_hash(StringView sv);
+uint32_t sv_hash(StringView sv);
 
 /* --- Strict Numerical Conversion (Supports 0x, 0b and _) --- */
 
@@ -140,7 +140,7 @@ bool sv_parse_mac(StringView sv, uint8_t mac[6]);
  * @brief Parses a string into arguments, supporting double quotes for spaces.
  * Example: int argc = shell_parse_line("cmd \"arg with space\" 123", argv, 10);
  */
-int  shell_parse_line(char *line, StringView argv[], int max_args);
+int shell_parse_line(char *line, StringView argv[], int max_args);
 
 /* --- StaticBuilder --- */
 
@@ -156,31 +156,31 @@ StaticBuilder sb_init(char *external_buffer, size_t size);
  * @brief Resets the builder length to zero. The underlying buffer is reused.
  * Example: sb_reset(&sb);
  */
-void          sb_reset(StaticBuilder *sb);
+void sb_reset(StaticBuilder *sb);
 
 /**
  * @brief Appends a StringView to the builder. Returns false if capacity is exceeded.
  * Example: sb_append_sv(&sb, sv_from_cstr("Data"));
  */
-bool          sb_append_sv(StaticBuilder *sb, StringView sv);
+bool sb_append_sv(StaticBuilder *sb, StringView sv);
 
 /**
  * @brief Appends a null-terminated string to the builder.
  * Example: sb_append_cstr(&sb, "Hello World");
  */
-bool          sb_append_cstr(StaticBuilder *sb, const char *s);
+bool sb_append_cstr(StaticBuilder *sb, const char *s);
 
 /**
  * @brief Appends a formatted string to the builder (printf-style).
  * Example: sb_append_fmt(&sb, "ID: %04d", 123);
  */
-bool          sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
+bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
 
 /**
  * @brief Returns a StringView of the content currently stored in the builder.
  * Example: StringView result = sb_to_view(&sb);
  */
-StringView    sb_to_view(const StaticBuilder *sb);
+StringView sb_to_view(const StaticBuilder *sb);
 
 /**
  * @brief Matches a StringView against a simple regular expression.
@@ -190,13 +190,16 @@ StringView    sb_to_view(const StaticBuilder *sb);
  * - '^' matches the beginning of the text.
  * - '$' matches the end of the text.
  * 
+ * @warning This engine is recursive. Avoid using extremely long or complex
+ * patterns on systems with limited stack space to prevent stack starvation.
+ * 
  * Example:
- * sv_match(sv_from_cstr("a.c"), 3, sv_from_cstr("abc")) -> true
- * sv_match(sv_from_cstr("a*b"), 3, sv_from_cstr("aaab")) -> true
- * sv_match(sv_from_cstr("^abc"), 4, sv_from_cstr("abcdef")) -> true
- * sv_match(sv_from_cstr("def$"), 4, sv_from_cstr("abcdef")) -> true
+ * sv_match(sv_from_cstr("a.c"), sv_from_cstr("abc")) -> true
+ * sv_match(sv_from_cstr("a*b"), sv_from_cstr("aaab")) -> true
+ * sv_match(sv_from_cstr("^abc"), sv_from_cstr("abcdef")) -> true
+ * sv_match(sv_from_cstr("def$"), sv_from_cstr("abcdef")) -> true
  */
-bool sv_match(const char *regexp, size_t re_len, StringView text);
+bool sv_match(StringView pattern, StringView text);
 
 /**
  * @brief Macros for printing StringViews using printf-family functions.

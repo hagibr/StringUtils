@@ -472,7 +472,7 @@ StringView sb_to_view(const StaticBuilder *sb) {
  * - If text is exhausted but regex is not, it's a mismatch (unless regex is '$').
  * - If characters don't match (and not '.'), it's a mismatch.
  */
-static bool match_here(const char *re, size_t re_l, StringView text);
+static bool match_here(StringView pattern, StringView text);
 
 /**
  * @brief Internal helper function to handle the '*' quantifier.
@@ -482,10 +482,10 @@ static bool match_here(const char *re, size_t re_l, StringView text);
  * the current text, then against the text after consuming 'c', and so on.
  * This is a backtracking approach.
  */
-static bool match_star(char c, const char *re, size_t re_l, StringView text) {
+static bool match_star(char c, StringView pattern, StringView text) {
     do {
         // Try to match the rest of the regex (after 'c*') against the current text
-        if (match_here(re, re_l, text)) return true;
+        if (match_here(pattern, text)) return true;
         
         // If 'c' cannot be matched against the current text, or text is exhausted,
         // then 'c*' cannot consume more, so stop trying.
@@ -498,24 +498,24 @@ static bool match_star(char c, const char *re, size_t re_l, StringView text) {
     return false;
 }
 
-static bool match_here(const char *re, size_t re_l, StringView text) {
+static bool match_here(StringView pattern, StringView text) {
     // If the regex is exhausted, we've found a match
-    if (re_l == 0) return true;
+    if (pattern.len == 0) return true;
 
     // If the next regex character is '*', handle it with match_star
-    if (re_l >= 2 && re[1] == '*') {
-        return match_star(re[0], re + 2, re_l - 2, text);
+    if (pattern.len >= 2 && pattern.data[1] == '*') {
+        return match_star(pattern.data[0], (StringView){pattern.data + 2, pattern.len - 2}, text);
     }
 
     // If regex is '$' and it's the last character, match only if text is exhausted
-    if (re_l == 1 && re[0] == '$') {
+    if (pattern.len == 1 && pattern.data[0] == '$') {
         return text.len == 0;
     }
 
     // If text is not exhausted and current regex char matches current text char (or regex char is '.')
-    if (text.len > 0 && (re[0] == '.' || re[0] == *text.data)) {
+    if (text.len > 0 && (pattern.data[0] == '.' || pattern.data[0] == *text.data)) {
         // Recursively match the rest of the regex against the rest of the text
-        return match_here(re + 1, re_l - 1, (StringView){text.data + 1, text.len - 1});
+        return match_here((StringView){pattern.data + 1, pattern.len - 1}, (StringView){text.data + 1, text.len - 1});
     }
 
     // No match found
@@ -528,14 +528,17 @@ static bool match_here(const char *re, size_t re_l, StringView text) {
  * Design: Handles '^' for anchoring the match to the beginning of the text.
  * If no '^' is present, it iterates through the text, attempting to match the
  * regex at each possible starting position. This is a brute-force search.
+ *
+ * @warning This implementation is recursive. Users should be cautious with 
+ * pattern complexity in stack-constrained embedded environments.
  */
-bool sv_match(const char *regexp, size_t re_len, StringView text) {
-    if (re_len > 0 && regexp[0] == '^') return match_here(regexp + 1, re_len - 1, text);
+bool sv_match(StringView pattern, StringView text) {
+    if (pattern.len > 0 && pattern.data[0] == '^') return match_here((StringView){pattern.data + 1, pattern.len - 1}, text);
     
     // Try matching at every position in the text
     // Loop continues as long as there's text to try matching against.
     while (true) {
-        if (match_here(regexp, re_len, text)) return true;
+        if (match_here(pattern, text)) return true;
         if (text.len == 0) break; // No more text to try
         text.data++;
         text.len--;

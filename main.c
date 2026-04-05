@@ -173,7 +173,7 @@ int main(void) {
             case 0xeaff1078: // "regex"
             case 0x7E202F96: // "match"
                 if (count < 3) { printf("Usage: regex|match <pattern> <text>\n"); break; }
-                bool matched = sv_match(args[1].data, args[1].len, args[2]);
+                bool matched = sv_match(args[1], args[2]);
                 printf("Result: %s\n", matched ? "true" : "false");
                 break;
 

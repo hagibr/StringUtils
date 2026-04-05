@@ -21,7 +21,7 @@ This library introduces two core primitives:
 *   **Protocol Helpers**: Built-in support for parsing IPv4 addresses, MAC addresses, and Hexadecimal byte arrays.
 *   **Shell Tokenizer**: A zero-copy line parser that supports quoted arguments, ideal for implementing UART-based Command Line Interfaces (CLIs).
 *   **Fast Hashing**: Implementation of the 32-bit FNV-1a hash for quick command dispatching or hash table lookups.
-*   **Simple Regex Matching**: A lightweight, recursive regular expression engine supporting `.` (any char), `*` (zero or more), `^` (start of string), and `$` (end of string).
+*   **Simple Regex Matching**: A lightweight, recursive regular expression engine supporting `.` (any char), `*` (zero or more), `^` (start of string), and `$` (end of string). **Warning**: Recursive implementation; avoid complex patterns on small stacks.
 
 ## Core Components
 
