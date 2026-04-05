@@ -6,6 +6,8 @@ A high-performance, **zero-allocation** string utility library written in C, spe
 
 The primary motivation of this project is to provide a robust alternative to standard C string manipulation functions (like `strtok`, `strtol`, or `sprintf`) which often require null-terminated strings, modify source buffers, or lack strict error handling. 
 
+**Note**: To maintain a strictly zero-allocation environment, it is recommended to use a custom `printf` library such as eyalroz/printf, as many standard library implementations of `printf` and `vsnprintf` may internally perform heap allocations.
+
 This library introduces two core primitives:
 1.  **StringView**: An immutable reference to a string slice (pointer + length). It allows for zero-copy parsing of large buffers without needing to insert `\0` characters or duplicate data.
 2.  **StaticBuilder**: A fixed-size buffer wrapper for safe string construction, preventing buffer overflows and ensuring consistent null-termination without dynamic memory allocation.
