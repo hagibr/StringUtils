@@ -5,7 +5,7 @@
 /* --- Basic StringView --- */
 
 /**
- * Constructor functions are kept inline-friendly.
+ * Constructor functions.
  * sv_from_parts allows creating views into sub-buffers.
  * sv_from_cstr handles NULL pointers gracefully to prevent crashes during initialization.
  */
