@@ -9,26 +9,24 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-/**
- * @struct StringView
- * @brief An immutable reference to a string (does not guarantee null-termination).
+/*
+ * An immutable reference to a string (does not guarantee null-termination).
  * Ideal for high-performance parsing without data duplication.
- * 
+ *
  * Example:
- * StringView sv = sv_from_parts("Hello World", 5); // Represents "Hello"
+ *   StringView sv = sv_from_parts("Hello World", 5); // Represents "Hello"
  */
 typedef struct {
     const char *data;
     size_t len;
 } StringView;
 
-/**
- * @struct StaticBuilder
- * @brief A fixed-size buffer for safe string construction.
- * 
+/*
+ * A fixed-size buffer for safe string construction.
+ *
  * Example:
- * char buf[64];
- * StaticBuilder sb = sb_init(buf, sizeof(buf));
+ *   char buf[64];
+ *   StaticBuilder sb = sb_init(buf, sizeof(buf));
  */
 typedef struct {
     char *data;
@@ -38,176 +36,359 @@ typedef struct {
 
 /* --- StringView Manipulation --- */
 
-/**
- * @brief Creates a StringView from a pointer and a length.
- * Example: sv_from_parts("abc", 2) -> "ab"
+/*
+ * Creates a StringView referencing 'len' bytes starting at 'data'.
+ * The data is not copied and does not need to be null-terminated.
+ * Use this to create a view into the middle of an existing buffer.
+ *
+ * Example:
+ *   const char *buf = "Hello, World!";
+ *   StringView sv = sv_from_parts(buf + 7, 5); // sv == "World"
  */
 StringView sv_from_parts(const char *data, size_t len);
 
-/**
- * @brief Creates a StringView from a null-terminated string.
- * Example: sv_from_cstr("hello")
+/*
+ * Creates a StringView from a null-terminated C-string.
+ * If 's' is NULL, returns an empty view (data=NULL, len=0).
+ *
+ * Example:
+ *   StringView sv    = sv_from_cstr("hello"); // sv.len == 5
+ *   StringView empty = sv_from_cstr(NULL);    // sv.len == 0
  */
 StringView sv_from_cstr(const char *s);
 
-/**
- * @brief Compares two StringViews for equality.
- * Example: sv_equals(sv_from_cstr("a"), sv_from_cstr("a")) -> true
+/*
+ * Returns true if two StringViews have identical length and contents.
+ * Comparison is binary-safe (works with embedded null bytes).
+ *
+ * Example:
+ *   sv_equals(sv_from_cstr("abc"), sv_from_cstr("abc")); // true
+ *   sv_equals(sv_from_cstr("abc"), sv_from_cstr("ABC")); // false
  */
 bool sv_equals(StringView a, StringView b);
 
-/**
- * @brief Compares a StringView with a null-terminated string.
- * Example: sv_equals_cstr(sv, "admin")
+/*
+ * Returns true if a StringView equals a null-terminated C-string.
+ * Returns false if 'b' is NULL.
+ *
+ * Example:
+ *   StringView cmd = sv_from_cstr("reboot");
+ *   if (sv_equals_cstr(cmd, "reboot")) { ... }
  */
 bool sv_equals_cstr(StringView a, const char *b);
 
-/**
- * @brief Removes leading and trailing whitespace.
- * Example: sv_trim(sv_from_cstr("  text  ")) -> "text"
+/*
+ * Returns a new StringView with leading and trailing whitespace removed.
+ * Does not modify the original buffer; only adjusts the pointer and length.
+ *
+ * Example:
+ *   StringView sv = sv_trim(sv_from_cstr("  hello  ")); // sv == "hello"
  */
 StringView sv_trim(StringView sv);
 
-/**
- * @brief Splits a StringView by a delimiter, updating the input to the remainder.
+/*
+ * Extracts the next token from '*input', delimited by 'delim', and advances
+ * '*input' past the delimiter so successive calls iterate all tokens.
+ * If 'delim' is not found, the entire remaining view is returned and
+ * input->len is set to 0, ending the iteration.
+ *
  * Example:
- * StringView in = sv_from_cstr("a,b,c");
- * StringView part = sv_split_next(&in, ','); // returns "a", 'in' becomes "b,c"
+ *   StringView in = sv_from_cstr("one,two,three");
+ *   while (in.len > 0) {
+ *       StringView tok = sv_split_next(&in, ',');
+ *       // tok: "one", then "two", then "three"
+ *   }
  */
 StringView sv_split_next(StringView *input, char delim);
 
-/**
- * @brief Calculates a 32-bit FNV-1a hash of the StringView.
- * Example: uint32_t h = sv_hash(sv_from_cstr("key"));
+/*
+ * Computes a 32-bit FNV-1a hash of the StringView contents.
+ * Suitable for use as a hash table key. Produces good distribution for
+ * short-to-medium strings with very low code overhead.
+ *
+ * Example:
+ *   uint32_t h = sv_hash(sv_from_cstr("sensor_temp")); // use as map key
  */
 uint32_t sv_hash(StringView sv);
 
 /* --- Strict Numerical Conversion (Supports 0x, 0b and _) --- */
 
-/**
- * @brief Converts StringView to integer types. Returns false on overflow or invalid chars.
- * Supports hex (0x), binary (0b), and underscores as separators.
- * Example: 
- * int64_t val;
- * sv_to_int64(sv_from_cstr("0xFF_FF"), &val); // val = 65535
+/*
+ * Parses a StringView into an int64_t. Returns false on parse or range error.
+ * Supported formats: decimal ("42", "-7"), hex ("0xFF"), binary ("0b1010"),
+ * underscore separators ("1_000", "0xFF_FF").
+ *
+ * Example:
+ *   int64_t v;
+ *   sv_to_int64(sv_from_cstr("-0x8000"), &v); // v = -32768
  */
 bool sv_to_int64(StringView sv, int64_t *res);
+
+/*
+ * Parses a StringView into an int32_t. Returns false on parse or range error.
+ *
+ * Example:
+ *   int32_t v;
+ *   sv_to_int32(sv_from_cstr("-2_000"), &v); // v = -2000
+ *   sv_to_int32(sv_from_cstr("0xDEAD"),  &v); // v = 57005
+ */
 bool sv_to_int32(StringView sv, int32_t *res);
+
+/*
+ * Parses a StringView into an int16_t. Returns false on parse or range error.
+ *
+ * Example:
+ *   int16_t v;
+ *   sv_to_int16(sv_from_cstr("0b0111111111111111"), &v); // v = 32767
+ */
 bool sv_to_int16(StringView sv, int16_t *res);
+
+/*
+ * Parses a StringView into an int8_t. Returns false on parse or range error.
+ *
+ * Example:
+ *   int8_t v;
+ *   sv_to_int8(sv_from_cstr("-128"), &v); // v = -128
+ *   sv_to_int8(sv_from_cstr("200"),  &v); // false, overflow
+ */
 bool sv_to_int8(StringView sv, int8_t *res);
 
+/*
+ * Parses a StringView into a uint64_t. Rejects negative values (leading '-').
+ * Returns false on parse or range error.
+ *
+ * Example:
+ *   uint64_t v;
+ *   sv_to_uint64(sv_from_cstr("0xFFFFFFFFFFFFFFFF"), &v); // v = UINT64_MAX
+ */
 bool sv_to_uint64(StringView sv, uint64_t *res);
+
+/*
+ * Parses a StringView into a uint32_t. Rejects negative values (leading '-').
+ * Returns false on parse or range error.
+ *
+ * Example:
+ *   uint32_t v;
+ *   sv_to_uint32(sv_from_cstr("1_000"), &v); // v = 1000
+ */
 bool sv_to_uint32(StringView sv, uint32_t *res);
+
+/*
+ * Parses a StringView into a uint16_t. Rejects negative values (leading '-').
+ * Returns false on parse or range error.
+ *
+ * Example:
+ *   uint16_t v;
+ *   sv_to_uint16(sv_from_cstr("0x1F4"), &v); // v = 500
+ */
 bool sv_to_uint16(StringView sv, uint16_t *res);
+
+/*
+ * Parses a StringView into a uint8_t. Rejects negative values (leading '-').
+ * Returns false on parse or range error.
+ *
+ * Example:
+ *   uint8_t v;
+ *   sv_to_uint8(sv_from_cstr("255"), &v); // v = 255
+ *   sv_to_uint8(sv_from_cstr("256"), &v); // false, overflow
+ */
 bool sv_to_uint8(StringView sv, uint8_t *res);
 
-/**
- * @brief Converts StringView to floating point.
- * Example: float f; sv_to_float32(sv_from_cstr("3.14"), &f);
+/*
+ * Parses a decimal floating-point number from a StringView into a double.
+ * Supports an optional leading sign, a single decimal point, and '_' as a
+ * digit separator (e.g. "1_000.50"). Does not support scientific notation.
+ * Returns false on empty input, multiple decimal points, or non-digit characters.
+ *
+ * Example:
+ *   double d;
+ *   sv_to_float64(sv_from_cstr("3.14159"), &d); // d = 3.14159
+ *   sv_to_float64(sv_from_cstr("1.2.3"),   &d); // false, two dots
  */
 bool sv_to_float64(StringView sv, double *res);
+
+/*
+ * Parses a decimal floating-point number from a StringView into a float.
+ * Delegates to sv_to_float64, then checks the value fits within ±FLT_MAX.
+ *
+ * Example:
+ *   float f;
+ *   sv_to_float32(sv_from_cstr("-1_024.5"), &f); // f = -1024.5
+ *   sv_to_float32(sv_from_cstr("1e99"),     &f); // false, scientific notation unsupported
+ */
 bool sv_to_float32(StringView sv, float *res);
 
 /* --- Hex and Protocol Utilities --- */
 
-/**
- * @brief Converts a 1-2 char hex StringView to uint8_t.
- * Example: uint8_t val; sv_hex_to_uint8(sv_from_cstr("AF"), &val); // val = 175
+/*
+ * Converts a 1 or 2 character hex string to a uint8_t.
+ * Accepts both uppercase and lowercase hex digits.
+ * Returns false if the input is empty, longer than 2 chars, or contains a non-hex character.
+ *
+ * Example:
+ *   uint8_t v;
+ *   sv_hex_to_uint8(sv_from_cstr("AF"), &v); // v = 0xAF (175)
+ *   sv_hex_to_uint8(sv_from_cstr("0f"), &v); // v = 0x0F (15)
+ *   sv_hex_to_uint8(sv_from_cstr("GG"), &v); // false, invalid digit
  */
 bool sv_hex_to_uint8(StringView sv, uint8_t *res);
 
-/**
- * @brief Converts a long hex string to a byte array.
- * Example: uint8_t bytes[2]; size_t s = 2; sv_hex_to_uint8_array(sv_from_cstr("AABB"), bytes, &s);
+/*
+ * Converts a hex string of even length into a byte array.
+ * Each consecutive pair of hex characters is decoded into one byte.
+ * On entry, '*array_size' must hold the capacity of 'array'.
+ * On success, '*array_size' is updated to the number of bytes written.
+ * Returns false if the input length is odd, the buffer is too small,
+ * 'array' or 'array_size' is NULL, or any character is not a valid hex digit.
+ *
+ * Example:
+ *   uint8_t buf[4]; size_t sz = sizeof(buf);
+ *   sv_hex_to_uint8_array(sv_from_cstr("DeAdBeEf"), buf, &sz);
+ *   // buf = {0xDE, 0xAD, 0xBE, 0xEF}, sz = 4
  */
 bool sv_hex_to_uint8_array(StringView sv, uint8_t *array, size_t *array_size);
 
-/**
- * @brief Parses an IPv4 string into 4 bytes.
- * Example: uint8_t ip[4]; sv_parse_ipv4(sv_from_cstr("127.0.0.1"), ip);
+/*
+ * Parses a dotted-decimal IPv4 address into a 4-byte array.
+ * Expects exactly 4 decimal octets in range [0, 255] separated by '.'.
+ * Returns false if any octet is out of range, non-numeric, or if the
+ * number of octets is not exactly 4.
+ *
+ * Example:
+ *   uint8_t ip[4];
+ *   sv_parse_ipv4(sv_from_cstr("192.168.1.100"), ip); // ip = {192, 168, 1, 100}
+ *   sv_parse_ipv4(sv_from_cstr("999.0.0.1"),     ip); // false, octet out of range
  */
 bool sv_parse_ipv4(StringView sv, uint8_t ip[4]);
 
-/**
- * @brief Parses a MAC address string (supports ':', '-' or '.' as separators).
- * Example: uint8_t mac[6]; sv_parse_mac(sv_from_cstr("AA:BB:CC:DD:EE:FF"), mac);
+/*
+ * Parses a MAC address string into a 6-byte array.
+ * The input must be exactly 17 characters: 6 pairs of hex digits separated by
+ * ':' or '-' (delimiter is detected from position 2 and must be used consistently).
+ * Returns false on incorrect length, invalid or mixed delimiters, or invalid hex digits.
+ *
+ * Example:
+ *   uint8_t mac[6];
+ *   sv_parse_mac(sv_from_cstr("AA:BB:CC:DD:EE:FF"), mac); // {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF}
+ *   sv_parse_mac(sv_from_cstr("aa-bb-cc-dd-ee-ff"), mac); // also valid
+ *   sv_parse_mac(sv_from_cstr("AA:BB-CC:DD:EE:FF"), mac); // false, mixed delimiters
  */
 bool sv_parse_mac(StringView sv, uint8_t mac[6]);
 
 /* --- Shell Parsing --- */
 
-/**
- * @brief Parses a string into arguments, supporting double quotes for spaces.
- * Example: int argc = shell_parse_line("cmd \"arg with space\" 123", argv, 10);
+/*
+ * Splits a command line string into an array of StringView tokens.
+ * Tokens are separated by whitespace. Arguments enclosed in double quotes
+ * are treated as a single token, allowing spaces inside them.
+ * Does not modify the input buffer (zero-copy). Escaped quotes are not supported.
+ * Returns the number of arguments parsed (argc).
+ *
+ * Example:
+ *   StringView argv[8];
+ *   int argc = shell_parse_line("set name \"John Doe\"", argv, 8);
+ *   // argc=3, argv[0]="set", argv[1]="name", argv[2]="John Doe"
  */
 int shell_parse_line(char *line, StringView argv[], int max_args);
 
 /* --- StaticBuilder --- */
 
-/**
- * @brief Initializes a StaticBuilder using an existing external buffer.
- * Example: 
- *     char buffer[128]; 
- *     StaticBuilder sb = sb_init(buffer, sizeof(buffer));
+/*
+ * Initializes a StaticBuilder over an existing external buffer.
+ * The buffer is immediately null-terminated. All subsequent append operations
+ * maintain null-termination, so 'sb.data' is always safe to pass to C-string APIs.
+ *
+ * Example:
+ *   char buf[64];
+ *   StaticBuilder sb = sb_init(buf, sizeof(buf));
  */
 StaticBuilder sb_init(char *external_buffer, size_t size);
 
-/**
- * @brief Resets the builder length to zero. The underlying buffer is reused.
- * Example: sb_reset(&sb);
+/*
+ * Resets the builder to empty without freeing or reallocating the buffer.
+ * Sets len to 0 and writes '\0' at buf[0], making it an empty C-string again.
+ *
+ * Example:
+ *   sb_append_cstr(&sb, "temporary");
+ *   sb_reset(&sb); // sb is empty again, buffer is reused
  */
 void sb_reset(StaticBuilder *sb);
 
-/**
- * @brief Appends a StringView to the builder. Returns false if capacity is exceeded.
- * Example: sb_append_sv(&sb, sv_from_cstr("Data"));
+/*
+ * Appends the contents of a StringView to the builder.
+ * Returns false without modifying the builder if there is insufficient
+ * remaining capacity (including space for the null terminator).
+ *
+ * Example:
+ *   sb_append_sv(&sb, sv_from_cstr("hello"));
+ *   sb_append_sv(&sb, sv_from_parts(", world", 7));
+ *   // sb.data == "hello, world"
  */
 bool sb_append_sv(StaticBuilder *sb, StringView sv);
 
-/**
- * @brief Appends a null-terminated string to the builder.
- * Example: sb_append_cstr(&sb, "Hello World");
+/*
+ * Appends a null-terminated C-string to the builder.
+ * Equivalent to sb_append_sv(sb, sv_from_cstr(s)).
+ *
+ * Example:
+ *   sb_append_cstr(&sb, "Status: ");
+ *   sb_append_cstr(&sb, "OK");
+ *   // sb.data == "Status: OK"
  */
 bool sb_append_cstr(StaticBuilder *sb, const char *s);
 
-/**
- * @brief Appends a formatted string to the builder (printf-style).
- * Example: sb_append_fmt(&sb, "ID: %04d", 123);
+/*
+ * Appends a printf-style formatted string to the builder.
+ * Returns false if the formatted output would exceed the remaining capacity
+ * or if a formatting error occurs. The builder is not modified on failure.
+ *
+ * Example:
+ *   sb_append_fmt(&sb, "Temp: %.1f C", 36.6f); // appends "Temp: 36.6 C"
+ *   sb_append_fmt(&sb, "ID: %04d", 7);          // appends "ID: 0007"
  */
 bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
 
-/**
- * @brief Returns a StringView of the content currently stored in the builder.
- * Example: StringView result = sb_to_view(&sb);
+/*
+ * Returns a StringView over the builder's current content.
+ * The view shares the builder's buffer and is valid as long as the builder
+ * is not reset or its buffer is not reused.
+ *
+ * Example:
+ *   sb_append_cstr(&sb, "hello");
+ *   StringView sv = sb_to_view(&sb);
+ *   printf(PRIsv "\n", EXsv(sv)); // prints: hello
  */
 StringView sb_to_view(const StaticBuilder *sb);
 
-/**
- * @brief Matches a StringView against a simple regular expression.
- * Supports '.', '*', '^', '$'.
- * - '.' matches any single character.
- * - '*' matches zero or more occurrences of the preceding character.
- * - '^' matches the beginning of the text.
- * - '$' matches the end of the text.
- * 
- * @warning This engine is recursive. Avoid using extremely long or complex
- * patterns on systems with limited stack space to prevent stack starvation.
- * 
+/*
+ * Matches a StringView against a simple regular expression (Rob Pike's engine).
+ *
+ * Supported metacharacters:
+ *   '.'  — matches any single character.
+ *   '*'  — matches zero or more occurrences of the preceding character.
+ *   '^'  — anchors the match to the start of the text.
+ *   '$'  — anchors the match to the end of the text.
+ *
+ * Without '^', the pattern is searched across all positions in the text.
+ * Character classes ([a-z]), '+', '?', and escaped metacharacters are not supported.
+ * Warning: this engine is recursive — avoid complex patterns on stack-constrained targets.
+ *
  * Example:
- * sv_match(sv_from_cstr("a.c"), sv_from_cstr("abc")) -> true
- * sv_match(sv_from_cstr("a*b"), sv_from_cstr("aaab")) -> true
- * sv_match(sv_from_cstr("^abc"), sv_from_cstr("abcdef")) -> true
- * sv_match(sv_from_cstr("def$"), sv_from_cstr("abcdef")) -> true
+ *   sv_match(sv_from_cstr("a.c"),    sv_from_cstr("abc"));     // true  ('.' matches 'b')
+ *   sv_match(sv_from_cstr("a*b"),    sv_from_cstr("aaab"));    // true  (three 'a's then 'b')
+ *   sv_match(sv_from_cstr("^hello"), sv_from_cstr("hello!"));  // true  (anchored at start)
+ *   sv_match(sv_from_cstr("end$"),   sv_from_cstr("the end")); // true  (anchored at end)
+ *   sv_match(sv_from_cstr("^x"),     sv_from_cstr("abc"));     // false (no match at start)
  */
 bool sv_match(StringView pattern, StringView text);
 
-/**
- * @brief Macros for printing StringViews using printf-family functions.
- * PRIsv provides the format string "%.*s", and EXsv expands the structure into 
- * the required (length, data) arguments.
+/*
+ * Macros for printing StringViews using printf-family functions.
+ * PRIsv provides the format specifier, EXsv expands the struct into the required arguments.
+ *
  * Example:
- *     StringView sv = sv_from_parts("BufferContent", 6);
- *     printf("The result is: " PRIsv "\n", EXsv(sv)); // Prints: The result is: Buffer
+ *   StringView sv = sv_from_parts("BufferContent", 6);
+ *   printf("Result: " PRIsv "\n", EXsv(sv)); // prints: Result: Buffer
  */
 #define PRIsv "%.*s"
 #define EXsv(sv) (int)(sv).len, (sv).data
