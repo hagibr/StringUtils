@@ -6,6 +6,11 @@
 
 int main(void) {
     char line_buf[MAX_CMD_LEN];
+
+    static char bs_raw[257];
+    static ByteStream bs = BYTESTREAM_INIT(bs_raw, sizeof(bs_raw)); // 256 usable by default
+    static bool bs_initialized = false;
+
     
     printf("StringUtils Interactive CLI (type 'exit'/'quit' to quit)\n");
     printf("Type 'help'/'?' to see the available commands.\n\n");
@@ -26,7 +31,7 @@ int main(void) {
         // Empty line
         if (count == 0) continue;
 
-        // Now we execute thecommands. Optimizing by using the hash functions.
+        // Now we execute the commands. Optimizing by using the hash functions.
         switch (sv_hash(args[0])) {
             case 0xcded1a85: // "exit"
             case 0x47878736: // "quit"
@@ -45,7 +50,15 @@ int main(void) {
                 printf("  hash <string>                       : Calculate FNV-1a 32-bit hash\n");
                 printf("  split <string> <char>               : Split string by a single delimiter\n");
                 printf("  regex|match <pattern> <text>        : Match text against a simple regex pattern\n");
+                printf("  tocstr <string> [bufsize]           : Convert StringView to C-string\n");
+                printf("  substr <string> <start> <length>    : Extract a substring\n");
                 printf("  build <args...>                     : Test StaticBuilder by joining arguments\n");
+                printf("  bs_init [capacity]                  : Initialize ByteStream (default 256)\n");
+                printf("  bs_write <data>                     : Write data into the stream\n");
+                printf("  bs_peek [count]                     : Peek bytes without consuming\n");
+                printf("  bs_read [count]                     : Read and consume bytes\n");
+                printf("  bs_reset                            : Reset the stream\n");
+                printf("  bs_status                           : Show readable/writable counts\n");
                 printf("  help, ?                             : Show this list\n");
                 printf("  exit, quit                          : Quit the program\n");
                 break;
@@ -189,6 +202,88 @@ int main(void) {
                     sb_append_cstr(&sb, "]");
                     printf("" PRIsv "\n", EXsv(sb_to_view(&sb)));
                 }
+                break;
+            case 0x87321F90: // "tocstr"
+                if (count < 2) { printf("Usage: tocstr <string> [bufsize]\n"); break; }
+                {
+                    char cstr_buf[256];
+                    size_t bsz = sizeof(cstr_buf);
+                    if (count >= 3) {
+                        uint32_t custom_sz;
+                        if (!sv_to_uint32(args[2], &custom_sz) || custom_sz > sizeof(cstr_buf))
+                            { printf("Error: Invalid buffer size\n"); break; }
+                        bsz = (size_t)custom_sz;
+                    }
+                    char *result = sv_to_cstr(args[1], cstr_buf, bsz);
+                    if (result) printf("Result: \"%s\" (len=%zu)\n", result, strlen(result));
+                    else printf("Result: Failed (buffer too small, need %zu)\n", args[1].len + 1);
+                }
+                break;
+
+            // "substr" command
+            case 0x4981C820: // "substr"
+                if (count < 4) { printf("Usage: substr <string> <start> <length>\n"); break; }
+                {
+                    uint32_t start, length;
+                    if (!sv_to_uint32(args[2], &start)) { printf("Error: Invalid start\n"); break; }
+                    if (!sv_to_uint32(args[3], &length)) { printf("Error: Invalid length\n"); break; }
+                    StringView sub = sv_substr(args[1], (size_t)start, (size_t)length);
+                    printf("Result: \"" PRIsv "\" (len=%zu)\n", EXsv(sub), sub.len);
+                }
+                break;
+            case 0xC07A6791: // "bs_init"
+                {
+                    uint32_t cap = 256;
+                    if (count >= 2 && !sv_to_uint32(args[1], &cap)) { printf("Error: Invalid capacity\n"); break; }
+                    if (cap > 256) cap = 256;
+                    bs = bs_init(bs_raw, (size_t)cap + 1);
+                    bs_initialized = true;
+                    printf("Stream initialized: %u usable bytes\n", cap);
+                }
+                break;
+
+            case 0xCEFB244A: // "bs_write"
+                if (!bs_initialized) { printf("Error: Run bs_init first\n"); break; }
+                if (count < 2) { printf("Usage: bs_write <data>\n"); break; }
+                {
+                    size_t w = bs_write(&bs, args[1].data, args[1].len);
+                    printf("Written: %zu of %zu bytes | Readable: %zu, Writable: %zu\n",
+                          w, args[1].len, bs_readable(&bs), bs_writable(&bs));
+                }
+                break;
+
+            case 0x4F12CC4C: // "bs_peek"
+                if (!bs_initialized) { printf("Error: Run bs_init first\n"); break; }
+                {
+                    uint32_t n = (uint32_t)bs_readable(&bs);
+                    if (count >= 2 && !sv_to_uint32(args[1], &n)) { printf("Error: Invalid count\n"); break; }
+                    char tmp[256];
+                    size_t p = bs_peek(&bs, tmp, (size_t)n);
+                    printf("Peek: \"%.*s\" (%zu bytes)\n", (int)p, tmp, p);
+                }
+                break;
+
+            case 0x3149BFCB: // "bs_read"
+                if (!bs_initialized) { printf("Error: Run bs_init first\n"); break; }
+                {
+                    uint32_t n = (uint32_t)bs_readable(&bs);
+                    if (count >= 2 && !sv_to_uint32(args[1], &n)) { printf("Error: Invalid count\n"); break; }
+                    char tmp[256];
+                    size_t r = bs_read(&bs, tmp, (size_t)n);
+                    printf("Read: \"%.*s\" (%zu bytes) | Readable: %zu, Writable: %zu\n",
+                          (int)r, tmp, r, bs_readable(&bs), bs_writable(&bs));
+                }
+                break;
+
+            case 0x9B3FB446: // "bs_reset"
+                if (!bs_initialized) { printf("Error: Run bs_init first\n"); break; }
+                bs_reset(&bs);
+                printf("Stream reset.\n");
+                break;
+
+            case 0xFB1AF4F1: // "bs_status"
+                if (!bs_initialized) { printf("Error: Run bs_init first\n"); break; }
+                printf("Readable: %zu, Writable: %zu\n", bs_readable(&bs), bs_writable(&bs));
                 break;
 
             default:
