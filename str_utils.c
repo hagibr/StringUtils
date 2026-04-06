@@ -2,8 +2,6 @@
 #include <limits.h>
 #include <float.h>
 
-/* --- Basic StringView --- */
-
 StringView sv_from_parts(const char *data, size_t len) {
     // Creates a view over an existing buffer slice — no copy, no null-terminator needed
     return (StringView){data, len};
@@ -64,8 +62,6 @@ uint32_t sv_hash(StringView sv) {
     return hash;
 }
 
-/* --- Internal Integer Conversion Engine --- */
-
 static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
     if (sv.len == 0) return false; // Exit 1: Empty input
     size_t i = 0; uint64_t val = 0; int base = 10; *neg = false;
@@ -99,8 +95,6 @@ static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
     if (!has_digits) return false; // Exit 6: Only separators were found (e.g. "0x_")
     *result = val; return true;
 }
-
-// Each wrapper calls the internal engine then checks the result fits the target type's range
 
 bool sv_to_uint64(StringView sv, uint64_t *res) {
     uint64_t v;
@@ -186,8 +180,6 @@ bool sv_to_int8(StringView sv, int8_t *res) {
     return false;
 }
 
-/* --- Strict Floating Point --- */
-
 bool sv_to_float64(StringView sv, double *res) {
     // strtod/atof require null-termination, so we parse manually
     if (sv.len == 0) {
@@ -252,8 +244,6 @@ bool sv_to_float32(StringView sv, float *res) {
     return false;
 }
 
-/* --- Hex and Protocols --- */
-
 bool sv_hex_to_uint8(StringView sv, uint8_t *res) {
     if (sv.len == 0 || sv.len > 2) return false; // Only 1 or 2 hex chars map to a single byte
     uint32_t val = 0;
@@ -305,8 +295,6 @@ bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
     return in.len == 0;
 }
 
-/* --- Shell Parsing --- */
-
 int shell_parse_line(char *line, StringView argv[], int max_args) {
     StringView input = sv_trim(sv_from_cstr(line)); // Strip leading/trailing whitespace first
     int argc = 0;
@@ -327,8 +315,6 @@ int shell_parse_line(char *line, StringView argv[], int max_args) {
     }
     return argc;
 }
-
-/* --- StaticBuilder --- */
 
 StaticBuilder sb_init(char *buf, size_t size) {
     StaticBuilder sb = {buf, size, 0};
@@ -365,8 +351,6 @@ bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...) {
 StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len}; // The view shares the builder's buffer — no copy
 }
-
-/* --- Regex Utilities (Rob Pike's implementation) --- */
 
 static bool match_here(StringView pattern, StringView text);
 
@@ -418,4 +402,45 @@ bool sv_match(StringView pattern, StringView text) {
         text.len--;
     }
     return false;
+}
+
+ByteStream bs_init(char *buf, size_t size) {
+    // One slot is sacrificed as a sentinel so head==tail unambiguously means empty
+    return (ByteStream){ buf, size - 1, 0, 0 };
+}
+
+void bs_reset(ByteStream *bs) {
+    bs->head = bs->tail = 0; // Both cursors back to zero — buffer contents are abandoned
+}
+
+size_t bs_readable(const ByteStream *bs) {
+    // Derived from head and tail only — no shared 'len' field, safe for single-producer/single-consumer
+    return (bs->head - bs->tail + bs->capacity + 1) % (bs->capacity + 1);
+}
+
+size_t bs_writable(const ByteStream *bs) {
+    return bs->capacity - bs_readable(bs); // Usable capacity is always one less than the buffer size
+}
+
+size_t bs_write(ByteStream *bs, const char *data, size_t len) {
+    size_t n = len < bs_writable(bs) ? len : bs_writable(bs); // Clamp to available space
+    for (size_t i = 0; i < n; i++) {
+        bs->buf[bs->head] = data[i];
+        bs->head = (bs->head + 1) % (bs->capacity + 1); // Wrap head around the physical buffer
+    }
+    return n;
+}
+
+size_t bs_peek(const ByteStream *bs, char *dst, size_t len) {
+    size_t n = len < bs_readable(bs) ? len : bs_readable(bs); // Clamp to available data
+    for (size_t i = 0; i < n; i++) {
+        dst[i] = bs->buf[(bs->tail + i) % (bs->capacity + 1)]; // Wrap-aware read, tail is not moved
+    }
+    return n;
+}
+
+size_t bs_read(ByteStream *bs, char *dst, size_t len) {
+    size_t n = bs_peek(bs, dst, len);                          // Reuse peek to avoid duplicating wrap logic
+    bs->tail = (bs->tail + n) % (bs->capacity + 1);           // Advance tail only after data is copied
+    return n;
 }

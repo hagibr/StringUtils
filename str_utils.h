@@ -34,6 +34,27 @@ typedef struct {
     size_t len;
 } StaticBuilder;
 
+/*
+ * A lock-free circular buffer for single-producer / single-consumer use.
+ * 'head' is owned exclusively by the writer, 'tail' by the reader.
+ * No 'len' field exists — occupancy is derived from head and tail alone,
+ * which makes concurrent access safe without a mutex on any architecture
+ * where size_t reads and writes are atomic (e.g. Cortex-M).
+ * One slot is permanently reserved as a sentinel to distinguish full from empty,
+ * so the usable capacity is always (size - 1) bytes.
+ *
+ * Example:
+ *   char raw[9];                          // 9-byte buffer, 8 usable
+ *   ByteStream bs = BYTESTREAM_INIT(raw, sizeof(raw));
+ */
+typedef struct {
+    char   *buf;
+    size_t  capacity; // Usable bytes (physical buffer size minus 1)
+    size_t  head;     // Next write position (writer-owned)
+    size_t  tail;     // Next read position  (reader-owned)
+} ByteStream;
+
+
 /* --- StringView Manipulation --- */
 
 /*
@@ -52,7 +73,7 @@ StringView sv_from_parts(const char *data, size_t len);
  * If 's' is NULL, returns an empty view (data=NULL, len=0).
  *
  * Example:
- *   StringView sv    = sv_from_cstr("hello"); // sv.len == 5
+ *   StringView sv    = sv_from_cstr("hello"); // sv.len == 5;
  *   StringView empty = sv_from_cstr(NULL);    // sv.len == 0
  */
 StringView sv_from_cstr(const char *s);
@@ -62,7 +83,7 @@ StringView sv_from_cstr(const char *s);
  * Comparison is binary-safe (works with embedded null bytes).
  *
  * Example:
- *   sv_equals(sv_from_cstr("abc"), sv_from_cstr("abc")); // true
+ *   sv_equals(sv_from_cstr("abc"), sv_from_cstr("abc")); // true;
  *   sv_equals(sv_from_cstr("abc"), sv_from_cstr("ABC")); // false
  */
 bool sv_equals(StringView a, StringView b);
@@ -129,7 +150,7 @@ bool sv_to_int64(StringView sv, int64_t *res);
  *
  * Example:
  *   int32_t v;
- *   sv_to_int32(sv_from_cstr("-2_000"), &v); // v = -2000
+ *   sv_to_int32(sv_from_cstr("-2_000"), &v); // v = -2000;
  *   sv_to_int32(sv_from_cstr("0xDEAD"),  &v); // v = 57005
  */
 bool sv_to_int32(StringView sv, int32_t *res);
@@ -148,7 +169,7 @@ bool sv_to_int16(StringView sv, int16_t *res);
  *
  * Example:
  *   int8_t v;
- *   sv_to_int8(sv_from_cstr("-128"), &v); // v = -128
+ *   sv_to_int8(sv_from_cstr("-128"), &v); // v = -128;
  *   sv_to_int8(sv_from_cstr("200"),  &v); // false, overflow
  */
 bool sv_to_int8(StringView sv, int8_t *res);
@@ -189,7 +210,7 @@ bool sv_to_uint16(StringView sv, uint16_t *res);
  *
  * Example:
  *   uint8_t v;
- *   sv_to_uint8(sv_from_cstr("255"), &v); // v = 255
+ *   sv_to_uint8(sv_from_cstr("255"), &v); // v = 255;
  *   sv_to_uint8(sv_from_cstr("256"), &v); // false, overflow
  */
 bool sv_to_uint8(StringView sv, uint8_t *res);
@@ -202,7 +223,7 @@ bool sv_to_uint8(StringView sv, uint8_t *res);
  *
  * Example:
  *   double d;
- *   sv_to_float64(sv_from_cstr("3.14159"), &d); // d = 3.14159
+ *   sv_to_float64(sv_from_cstr("3.14159"), &d); // d = 3.14159;
  *   sv_to_float64(sv_from_cstr("1.2.3"),   &d); // false, two dots
  */
 bool sv_to_float64(StringView sv, double *res);
@@ -213,7 +234,7 @@ bool sv_to_float64(StringView sv, double *res);
  *
  * Example:
  *   float f;
- *   sv_to_float32(sv_from_cstr("-1_024.5"), &f); // f = -1024.5
+ *   sv_to_float32(sv_from_cstr("-1_024.5"), &f); // f = -1024.5;
  *   sv_to_float32(sv_from_cstr("1e99"),     &f); // false, scientific notation unsupported
  */
 bool sv_to_float32(StringView sv, float *res);
@@ -227,8 +248,8 @@ bool sv_to_float32(StringView sv, float *res);
  *
  * Example:
  *   uint8_t v;
- *   sv_hex_to_uint8(sv_from_cstr("AF"), &v); // v = 0xAF (175)
- *   sv_hex_to_uint8(sv_from_cstr("0f"), &v); // v = 0x0F (15)
+ *   sv_hex_to_uint8(sv_from_cstr("AF"), &v); // v = 0xAF (175);
+ *   sv_hex_to_uint8(sv_from_cstr("0f"), &v); // v = 0x0F (15);
  *   sv_hex_to_uint8(sv_from_cstr("GG"), &v); // false, invalid digit
  */
 bool sv_hex_to_uint8(StringView sv, uint8_t *res);
@@ -269,11 +290,97 @@ bool sv_parse_ipv4(StringView sv, uint8_t ip[4]);
  *
  * Example:
  *   uint8_t mac[6];
- *   sv_parse_mac(sv_from_cstr("AA:BB:CC:DD:EE:FF"), mac); // {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF}
- *   sv_parse_mac(sv_from_cstr("aa-bb-cc-dd-ee-ff"), mac); // also valid
+ *   sv_parse_mac(sv_from_cstr("AA:BB:CC:DD:EE:FF"), mac); // {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+ *   sv_parse_mac(sv_from_cstr("aa-bb-cc-dd-ee-ff"), mac); // also valid;
  *   sv_parse_mac(sv_from_cstr("AA:BB-CC:DD:EE:FF"), mac); // false, mixed delimiters
  */
 bool sv_parse_mac(StringView sv, uint8_t mac[6]);
+
+/* --- ByteStream --- */
+
+
+/*
+ * Static-initializer macro for global or static ByteStream variables.
+ * 'size' is the total size of the backing buffer; usable capacity is size-1.
+ *
+ * Example:
+ *   static char raw[65];
+ *   static ByteStream bs = BYTESTREAM_INIT(raw, sizeof(raw)); // 64 usable bytes
+ */
+#define BYTESTREAM_INIT(buf, size) { (buf), (size) - 1, 0, 0 }
+
+/*
+ * Initializes a ByteStream at runtime over an existing buffer.
+ * Equivalent to the BYTESTREAM_INIT macro but usable inside functions.
+ *
+ * Example:
+ *   char raw[9];
+ *   ByteStream bs = bs_init(raw, sizeof(raw)); // 8 usable bytes
+ */
+ByteStream bs_init(char *buf, size_t size);
+
+/*
+ * Resets the stream to empty by moving both cursors back to zero.
+ * The buffer contents are not cleared; any unread data is silently discarded.
+ *
+ * Example:
+ *   bs_write(&bs, "hello", 5);
+ *   bs_reset(&bs); // stream is empty again
+ */
+void bs_reset(ByteStream *bs);
+
+/*
+ * Returns the number of bytes currently available to read.
+ *
+ * Example:
+ *   bs_write(&bs, "hi", 2);
+ *   bs_readable(&bs); // 2
+ */
+size_t bs_readable(const ByteStream *bs);
+
+/*
+ * Returns the number of bytes that can still be written before the stream is full.
+ *
+ * Example:
+ *   // With an 8-byte usable capacity and 2 bytes written:
+ *   bs_writable(&bs); // 6
+ */
+size_t bs_writable(const ByteStream *bs);
+
+/*
+ * Writes up to 'len' bytes from 'data' into the stream.
+ * If fewer than 'len' bytes are available, only the fitting bytes are written.
+ * Returns the number of bytes actually written.
+ *
+ * Example:
+ *   char raw[5]; ByteStream bs = bs_init(raw, sizeof(raw)); // 4 usable
+ *   bs_write(&bs, "hello", 5); // returns 4, last byte dropped
+ */
+size_t bs_write(ByteStream *bs, const char *data, size_t len);
+
+/*
+ * Copies up to 'len' bytes from the stream into 'dst' without consuming them.
+ * Successive peeks return the same data until a bs_read advances the tail.
+ * Returns the number of bytes copied.
+ *
+ * Example:
+ *   char tmp[4];
+ *   bs_peek(&bs, tmp, 4); // reads 4 bytes, stream position unchanged
+ *   bs_peek(&bs, tmp, 4); // returns the same 4 bytes again
+ */
+size_t bs_peek(const ByteStream *bs, char *dst, size_t len);
+
+/*
+ * Copies up to 'len' bytes from the stream into 'dst' and advances the read cursor.
+ * Returns the number of bytes consumed.
+ *
+ * Example:
+ *   bs_write(&bs, "hello", 5);
+ *   char out[3];
+ *   bs_read(&bs, out, 3); // out="hel", 2 bytes remain in stream
+ *   bs_read(&bs, out, 3); // out="lo",  returns 2
+ */
+size_t bs_read(ByteStream *bs, char *dst, size_t len);
 
 /* --- Shell Parsing --- */
 
@@ -343,7 +450,7 @@ bool sb_append_cstr(StaticBuilder *sb, const char *s);
  * or if a formatting error occurs. The builder is not modified on failure.
  *
  * Example:
- *   sb_append_fmt(&sb, "Temp: %.1f C", 36.6f); // appends "Temp: 36.6 C"
+ *   sb_append_fmt(&sb, "Temp: %.1f C", 36.6f);  // appends "Temp: 36.6 C";
  *   sb_append_fmt(&sb, "ID: %04d", 7);          // appends "ID: 0007"
  */
 bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
@@ -374,10 +481,10 @@ StringView sb_to_view(const StaticBuilder *sb);
  * Warning: this engine is recursive — avoid complex patterns on stack-constrained targets.
  *
  * Example:
- *   sv_match(sv_from_cstr("a.c"),    sv_from_cstr("abc"));     // true  ('.' matches 'b')
- *   sv_match(sv_from_cstr("a*b"),    sv_from_cstr("aaab"));    // true  (three 'a's then 'b')
- *   sv_match(sv_from_cstr("^hello"), sv_from_cstr("hello!"));  // true  (anchored at start)
- *   sv_match(sv_from_cstr("end$"),   sv_from_cstr("the end")); // true  (anchored at end)
+ *   sv_match(sv_from_cstr("a.c"),    sv_from_cstr("abc"));     // true  ('.' matches 'b');
+ *   sv_match(sv_from_cstr("a*b"),    sv_from_cstr("aaab"));    // true  (three 'a's then 'b');
+ *   sv_match(sv_from_cstr("^hello"), sv_from_cstr("hello!"));  // true  (anchored at start);
+ *   sv_match(sv_from_cstr("end$"),   sv_from_cstr("the end")); // true  (anchored at end);
  *   sv_match(sv_from_cstr("^x"),     sv_from_cstr("abc"));     // false (no match at start)
  */
 bool sv_match(StringView pattern, StringView text);
