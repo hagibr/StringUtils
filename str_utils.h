@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <ctype.h>
+#include <ctype.h> // IWYU pragma: keep.
 #include <stdarg.h>
 #include <stdio.h>
 
