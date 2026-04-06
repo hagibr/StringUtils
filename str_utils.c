@@ -12,6 +12,13 @@ StringView sv_from_cstr(const char *s) {
     return (StringView){s, s ? strlen(s) : 0};
 }
 
+char *sv_to_cstr(StringView sv, char *buffer, size_t buf_len) {
+    if (!buffer || buf_len < sv.len + 1) return NULL; // Need room for sv.len bytes + null terminator
+    memcpy(buffer, sv.data, sv.len);                  // Copy raw bytes — works even with embedded nulls
+    buffer[sv.len] = '\0';                            // Append null terminator to form a valid C-string
+    return buffer;
+}
+
 bool sv_equals(StringView a, StringView b) {
     // Short-circuit on length mismatch before touching the data
     return (a.len == b.len) && (memcmp(a.data, b.data, a.len) == 0);
@@ -34,6 +41,12 @@ StringView sv_trim(StringView sv) {
         sv.len--;
     }
     return sv; // Only the pointer and length change — the buffer is untouched
+}
+
+StringView sv_substr(StringView sv, size_t start, size_t length) {
+    if (start >= sv.len) return (StringView){sv.data + sv.len, 0};
+    size_t remaining = sv.len - start;
+    return (StringView){sv.data + start, length < remaining ? length : remaining};
 }
 
 StringView sv_split_next(StringView *input, char delim) {

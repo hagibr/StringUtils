@@ -79,6 +79,21 @@ StringView sv_from_parts(const char *data, size_t len);
 StringView sv_from_cstr(const char *s);
 
 /*
+ * Copies the contents of 'sv' into 'buffer' and appends a null terminator,
+ * producing a valid C-string. The buffer must be at least sv.len + 1 bytes.
+ * Returns 'buffer' on success, or NULL if 'buffer' is NULL or 'buf_len' is
+ * too small to hold sv.len bytes plus the null terminator.
+ * The original StringView is not modified.
+ *
+ * Example:
+ *   char buf[16];
+ *   StringView sv = sv_from_parts("hello", 5);
+ *   char *s = sv_to_cstr(sv, buf, sizeof(buf)); // s == "hello", buf[5] == '\0';
+ *   sv_to_cstr(sv, buf, 5);                     // NULL, buf_len too small (need 6)
+ */
+char *sv_to_cstr(StringView sv, char *buffer, size_t buf_len);
+
+/*
  * Returns true if two StringViews have identical length and contents.
  * Comparison is binary-safe (works with embedded null bytes).
  *
@@ -106,6 +121,19 @@ bool sv_equals_cstr(StringView a, const char *b);
  *   StringView sv = sv_trim(sv_from_cstr("  hello  ")); // sv == "hello"
  */
 StringView sv_trim(StringView sv);
+
+/*
+ * Returns a sub-view of 'sv' starting at byte offset 'start' with at most 'length' bytes.
+ * If 'start' is beyond sv.len, returns an empty view.
+ * If 'start + length' exceeds sv.len, the view is clamped to the end.
+ *
+ * Example:
+ *   StringView sv = sv_from_cstr("Hello, World!");
+ *   sv_substr(sv, 7, 5); // "World"
+ *   sv_substr(sv, 7, 99); // "World!" (clamped)
+ *   sv_substr(sv, 99, 5); // "" (empty, start out of range)
+ */
+StringView sv_substr(StringView sv, size_t start, size_t length);
 
 /*
  * Extracts the next token from '*input', delimited by 'delim', and advances
