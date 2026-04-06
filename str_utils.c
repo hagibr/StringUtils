@@ -5,9 +5,8 @@
 /* --- Basic StringView --- */
 
 /**
- * Constructor functions.
- * sv_from_parts allows creating views into sub-buffers.
- * sv_from_cstr handles NULL pointers gracefully to prevent crashes during initialization.
+ * sv_from_parts: Creates a view over an existing buffer slice (no copy, no null-terminator needed).
+ * sv_from_cstr:  Creates a view from a null-terminated string. Accepts NULL safely (returns empty view).
  */
 StringView sv_from_parts(const char *data, size_t len) {
     return (StringView){data, len};
@@ -17,15 +16,16 @@ StringView sv_from_cstr(const char *s) {
 }
 
 /**
- * Uses memcmp for binary-safe comparison. 
- * This is faster than character-by-character loops on most architectures.
+ * Compares two StringViews for equality. Uses memcmp for binary-safe, length-aware comparison.
+ * Returns false immediately if lengths differ, avoiding unnecessary byte scanning.
  */
 bool sv_equals(StringView a, StringView b) {
     return (a.len == b.len) && (memcmp(a.data, b.data, a.len) == 0);
 }
 
 /**
- * Avoids creating a temporary StringView for the C-string to reduce stack overhead.
+ * Compares a StringView against a C-string literal without wrapping it in a temporary StringView.
+ * Returns false if 'b' is NULL.
  */
 bool sv_equals_cstr(StringView a, const char *b) {
     if (!b) return false;
@@ -34,8 +34,8 @@ bool sv_equals_cstr(StringView a, const char *b) {
 }
 
 /**
- * Performs a "shrink-wrap" operation. 
- * It returns a new view without modifying the original data, making it O(1) in memory.
+ * Returns a new StringView with leading and trailing whitespace removed.
+ * Does not modify the underlying buffer — only adjusts the data pointer and length (O(1) memory).
  */
 StringView sv_trim(StringView sv) {
     if (sv.len == 0) return sv;
@@ -51,10 +51,10 @@ StringView sv_trim(StringView sv) {
 }
 
 /**
- * This follows a "consuming iterator" pattern. 
- * By passing a pointer to the input StringView, we advance the original reference 
- * forward, allowing users to call this in a simple 'while' loop.
- * It uses memchr for highly optimized delimiter searching.
+ * Extracts the next token from 'input' up to the first occurrence of 'delim', then advances
+ * 'input' past the delimiter so the next call returns the following token.
+ * If 'delim' is not found, returns the entire remaining view and sets input->len to 0.
+ * Use in a loop: while (input.len > 0) { StringView tok = sv_split_next(&input, ','); ... }
  */
 StringView sv_split_next(StringView *input, char delim) {
     if (input->len == 0) return (StringView){NULL, 0};
@@ -72,9 +72,9 @@ StringView sv_split_next(StringView *input, char delim) {
 }
 
 /**
- * FNV-1a (Fowler-Noll-Vo) 32-bit algorithm.
- * Chosen for its extremely low implementation footprint and excellent distribution 
- * properties for short-to-medium strings typical in hash table keys.
+ * Computes a 32-bit FNV-1a hash of the StringView contents.
+ * Suitable for hash table keys. Good distribution for short-to-medium strings
+ * with minimal code footprint — a good fit for embedded targets.
  */
 uint32_t sv_hash(StringView sv) {
     uint32_t hash = 0x811c9dc5;
@@ -138,9 +138,9 @@ static bool sv_internal_to_u64(StringView sv, uint64_t *result, bool *neg) {
 }
 
 /**
- * These wrappers use the internal engine and perform post-conversion 
- * bounds checking. This centralizes the parsing logic while ensuring type safety 
- * across different integer widths.
+ * Public integer conversion wrappers. Each calls sv_internal_to_u64 and then
+ * checks that the parsed value fits within the target type's range.
+ * Returns false on overflow, negative value for unsigned types, or any parse error.
  */
 
 bool sv_to_uint64(StringView sv, uint64_t *res) {
@@ -229,9 +229,10 @@ bool sv_to_int8(StringView sv, int8_t *res) {
 /* --- Strict Floating Point --- */
 
 /**
- * Manual float parsing is implemented because standard library 
- * functions (strtod/atof) require a null-terminated string.
- * This implementation supports a single decimal point and optional sign.
+ * Parses a decimal floating-point number from a StringView into a double.
+ * Implemented manually because strtod/atof require a null-terminated string.
+ * Supports optional leading sign, a single decimal point, and '_' as a digit separator.
+ * Returns false on empty input, multiple decimal points, or non-digit characters.
  */
 bool sv_to_float64(StringView sv, double *res) {
     if (sv.len == 0) {
@@ -293,6 +294,11 @@ bool sv_to_float64(StringView sv, double *res) {
     return true;
 }
 
+/**
+ * Parses a decimal floating-point number into a float.
+ * Delegates to sv_to_float64 and then checks the value fits within float range (±FLT_MAX).
+ * Returns false if the value would overflow a 32-bit float.
+ */
 bool sv_to_float32(StringView sv, float *res) {
     double v;
     if (sv_to_float64(sv, &v) && v <= FLT_MAX && v >= -FLT_MAX) {
@@ -305,7 +311,8 @@ bool sv_to_float32(StringView sv, float *res) {
 /* --- Hex and Protocols --- */
 
 /**
- * Direct nibble conversion using bit shifts for maximum performance.
+ * Converts a 1 or 2 character hex string (e.g. "A3") to a uint8_t.
+ * Accepts both uppercase and lowercase hex digits. Rejects inputs longer than 2 chars.
  */
 bool sv_hex_to_uint8(StringView sv, uint8_t *res) {
     if (sv.len == 0 || sv.len > 2) return false;
@@ -325,8 +332,10 @@ bool sv_hex_to_uint8(StringView sv, uint8_t *res) {
 }
 
 /**
- * Processes hex strings in pairs. 
- * It ensures the input length is even to prevent malformed byte interpretations.
+ * Converts a hex string of even length (e.g. "AABBCC") into a byte array.
+ * Each pair of hex characters maps to one byte. Fails if the input length is odd,
+ * if the output buffer is too small, or if any character is not a valid hex digit.
+ * On success, updates *array_size to the number of bytes written.
  */
 bool sv_hex_to_uint8_array(StringView sv, uint8_t *array, size_t *array_size) {
     if (!array || !array_size || sv.len % 2 != 0) return false;
@@ -340,8 +349,9 @@ bool sv_hex_to_uint8_array(StringView sv, uint8_t *array, size_t *array_size) {
 }
 
 /**
- * Composes sv_split_next and sv_to_uint8. 
- * This demonstrates the power of StringView tokenization: no buffer copies are needed.
+ * Parses a dotted-decimal IPv4 address (e.g. "192.168.1.1") into a 4-byte array.
+ * Splits on '.' and converts each octet with sv_to_uint8. Returns false if any
+ * octet is out of range, non-numeric, or if there are more/fewer than 4 octets.
  */
 bool sv_parse_ipv4(StringView sv, uint8_t ip[4]) {
     StringView in = sv;
@@ -353,9 +363,9 @@ bool sv_parse_ipv4(StringView sv, uint8_t ip[4]) {
 }
 
 /**
- * Flexible separator detection. 
- * It looks at the character at index 2 to determine the delimiter used 
- * (enforces ':' or '-' consistently).
+ * Parses a MAC address string (e.g. "AA:BB:CC:DD:EE:FF" or "AA-BB-CC-DD-EE-FF") into
+ * a 6-byte array. The delimiter is detected from position 2 and must be ':' or '-'
+ * used consistently across all 5 separators. Returns false on any format violation.
  */
 bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
     if (sv.len != 17) return false;
@@ -374,12 +384,11 @@ bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
 /* --- Shell Parsing --- */
 
 /**
- * A non-destructive zero-copy parser.
- * Unlike strtok, it does not modify the input buffer. 
- * It handles quoted arguments by detecting the starting '"' and using 
- * sv_split_next to "jump" to the closing quote. Doesn't have an escaped
- * quote capability, because it would either modify the original string
- * or need a buffer allocation. 
+ * Splits a command line string into an array of StringView tokens, respecting double-quoted
+ * arguments (e.g. cmd "arg with spaces" 123 -> 3 tokens). Does not modify the input buffer.
+ * Unlike strtok, it is re-entrant and zero-copy. Escaped quotes are not supported — doing so
+ * would require either modifying the buffer or allocating memory.
+ * Returns the number of parsed arguments (argc).
  */
 int shell_parse_line(char *line, StringView argv[], int max_args) {
     StringView input = sv_trim(sv_from_cstr(line));
@@ -403,10 +412,9 @@ int shell_parse_line(char *line, StringView argv[], int max_args) {
 /* --- StaticBuilder --- */
 
 /**
- * Safe string construction.
- * Every append operation checks remaining capacity and ensures the buffer 
- * is always null-terminated. This makes the internal data safe to use 
- * with legacy C functions if needed.
+ * Initializes a StaticBuilder over an existing external buffer.
+ * The buffer is always kept null-terminated after every operation, making it
+ * safe to pass to legacy C functions (e.g. printf("%s", sb.data)).
  */
 StaticBuilder sb_init(char *buf, size_t size) {
     StaticBuilder sb = {buf, size, 0};
@@ -414,14 +422,18 @@ StaticBuilder sb_init(char *buf, size_t size) {
     return sb;
 }
 
+/**
+ * Resets the builder to empty without freeing or reallocating the buffer.
+ * The first byte is set to '\0' so the buffer is immediately usable as an empty C-string.
+ */
 void sb_reset(StaticBuilder *sb) {
     sb->len = 0;
     if (sb->capacity > 0) sb->data[0] = '\0';
 }
 
 /**
- * Uses memcpy for efficiency. 
- * Automatically manages the length and the trailing null byte.
+ * Appends the contents of a StringView to the builder.
+ * Returns false without modifying the builder if there is insufficient remaining capacity.
  */
 bool sb_append_sv(StaticBuilder *sb, StringView sv) {
     if (sb->len + sv.len + 1 > sb->capacity) return false;
@@ -430,14 +442,17 @@ bool sb_append_sv(StaticBuilder *sb, StringView sv) {
     return true;
 }
 
+/**
+ * Appends a null-terminated C-string to the builder. Thin wrapper around sb_append_sv.
+ */
 bool sb_append_cstr(StaticBuilder *sb, const char *s) {
     return sb_append_sv(sb, sv_from_cstr(s));
 }
 
 /**
- * Thin wrapper around vsnprintf.
- * It detects truncation by checking vsnprintf's return value against 
- * the remaining capacity, returning false if the message was too long.
+ * Appends a printf-style formatted string to the builder.
+ * Returns false if the formatted output would exceed the remaining capacity (truncation is
+ * detected via vsnprintf's return value) or if a formatting error occurs.
  */
 bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...) {
     if (sb->len + 1 >= sb->capacity) return false;
@@ -448,6 +463,10 @@ bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...) {
     sb->len += (size_t)res; return true;
 }
 
+/**
+ * Returns a StringView over the builder's current content. The view is valid as long
+ * as the builder's buffer is not reallocated or reset.
+ */
 StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len};
 }
