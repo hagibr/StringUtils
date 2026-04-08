@@ -26,7 +26,7 @@ int main(void) {
 
         // Parsing the line and splitting into several StringViews (max 10)
         StringView args[10];
-        int count = shell_parse_line(line_buf, args, 10);
+        int count = shell_parse_line(sv_from_cstr(line_buf), args, 10);
 
         // Empty line
         if (count == 0) continue;
@@ -176,10 +176,10 @@ int main(void) {
                 if (count < 3 || args[2].len != 1) { printf("Usage: split <str> <char>\n"); break; }
                 char delim = args[2].data[0];
                 StringView input = args[1];
-                printf("Splitting \"" PRIsv "\" by '%c':\n", EXsv(input), delim);
+                printf("Splitting \"%" PRIsv "\" by '%c':\n", EXsv(input), delim);
                 while (input.len > 0) {
                     StringView part = sv_split_next(&input, delim);
-                    printf("  - \"" PRIsv "\"\n", EXsv(part));
+                    printf("  - \"%" PRIsv "\"\n", EXsv(part));
                 }
                 break;
 
@@ -200,7 +200,7 @@ int main(void) {
                         if (i < count - 1) sb_append_cstr(&sb, ", ");
                     }
                     sb_append_cstr(&sb, "]");
-                    printf("" PRIsv "\n", EXsv(sb_to_view(&sb)));
+                    printf("%" PRIsv "\n", EXsv(sb_to_view(&sb)));
                 }
                 break;
             case 0x87321F90: // "tocstr"
@@ -228,7 +228,7 @@ int main(void) {
                     if (!sv_to_uint32(args[2], &start)) { printf("Error: Invalid start\n"); break; }
                     if (!sv_to_uint32(args[3], &length)) { printf("Error: Invalid length\n"); break; }
                     StringView sub = sv_substr(args[1], (size_t)start, (size_t)length);
-                    printf("Result: \"" PRIsv "\" (len=%zu)\n", EXsv(sub), sub.len);
+                    printf("Result: \"%" PRIsv "\" (len=%zu)\n", EXsv(sub), sub.len);
                 }
                 break;
             case 0xC07A6791: // "bs_init"
@@ -287,7 +287,7 @@ int main(void) {
                 break;
 
             default:
-                printf("Unknown command: " PRIsv "\n", EXsv(args[0]));
+                printf("Unknown command: %" PRIsv "\n", EXsv(args[0]));
                 break;
         }
     }

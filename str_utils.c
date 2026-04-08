@@ -308,8 +308,8 @@ bool sv_parse_mac(StringView sv, uint8_t mac[6]) {
     return in.len == 0;
 }
 
-int shell_parse_line(char *line, StringView argv[], int max_args) {
-    StringView input = sv_trim(sv_from_cstr(line)); // Strip leading/trailing whitespace first
+int shell_parse_line(StringView line, StringView argv[], int max_args) {
+    StringView input = sv_trim(line); // Strip leading/trailing whitespace first
     int argc = 0;
     while (argc < max_args && input.len > 0) {
         if (input.data[0] == '"') {
@@ -349,6 +349,14 @@ bool sb_append_sv(StaticBuilder *sb, StringView sv) {
 
 bool sb_append_cstr(StaticBuilder *sb, const char *s) {
     return sb_append_sv(sb, sv_from_cstr(s)); // Thin wrapper — delegates length calculation to sv_from_cstr
+}
+
+bool sb_append_char(StaticBuilder *sb, const char c) {
+    if (sb->len + sizeof(c) + 1 > sb->capacity) return false; // +1 for the null terminator
+    sb->data[sb->len] = c;
+    sb->len += 1;
+    sb->data[sb->len] = '\0'; // Always keep the buffer null-terminated
+    return true;
 }
 
 bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...) {

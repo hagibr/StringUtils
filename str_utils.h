@@ -421,10 +421,10 @@ size_t bs_read(ByteStream *bs, char *dst, size_t len);
  *
  * Example:
  *   StringView argv[8];
- *   int argc = shell_parse_line("set name \"John Doe\"", argv, 8);
+ *   int argc = shell_parse_line(sv_from_cstr("set name \"John Doe\""), argv, 8);
  *   // argc=3, argv[0]="set", argv[1]="name", argv[2]="John Doe"
  */
-int shell_parse_line(char *line, StringView argv[], int max_args);
+int shell_parse_line(StringView line, StringView argv[], int max_args);
 
 /* --- StaticBuilder --- */
 
@@ -473,6 +473,15 @@ bool sb_append_sv(StaticBuilder *sb, StringView sv);
 bool sb_append_cstr(StaticBuilder *sb, const char *s);
 
 /*
+ * Appends a char to the builder.
+ *
+ * Example:
+ *   sb_append_cstr(&sb, "Status: ");
+ *   sb_append_char(&sb, '#');
+ *   // sb.data == "Status: #"
+ */
+bool sb_append_char(StaticBuilder *sb, char c);
+/*
  * Appends a printf-style formatted string to the builder.
  * Returns false if the formatted output would exceed the remaining capacity
  * or if a formatting error occurs. The builder is not modified on failure.
@@ -491,7 +500,7 @@ bool sb_append_fmt(StaticBuilder *sb, const char *fmt, ...);
  * Example:
  *   sb_append_cstr(&sb, "hello");
  *   StringView sv = sb_to_view(&sb);
- *   printf(PRIsv "\n", EXsv(sv)); // prints: hello
+ *   printf("%" PRIsv "\n", EXsv(sv)); // prints: hello
  */
 StringView sb_to_view(const StaticBuilder *sb);
 
@@ -523,9 +532,9 @@ bool sv_match(StringView pattern, StringView text);
  *
  * Example:
  *   StringView sv = sv_from_parts("BufferContent", 6);
- *   printf("Result: " PRIsv "\n", EXsv(sv)); // prints: Result: Buffer
+ *   printf("Result: %" PRIsv "\n", EXsv(sv)); // prints: Result: Buffer
  */
-#define PRIsv "%.*s"
+#define PRIsv ".*s"
 #define EXsv(sv) (int)(sv).len, (sv).data
 
 #endif // STR_UTILS_H
