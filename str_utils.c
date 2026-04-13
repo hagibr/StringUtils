@@ -387,40 +387,40 @@ StringView sb_to_view(const StaticBuilder *sb) {
 static bool sv_match_internal(StringView p, StringView t) {
     size_t pi = 0, ti = 0;
     
-    // Save points for the CURRENT modifier being processed
+    // Tracks the most recent quantifier to allow stepping back
     size_t s_pi = (size_t)-1, s_ti = (size_t)-1;
+    size_t match_count = 0; // How many chars the current quantifier consumed
 
     while (true) {
-        // 1. Success: Pattern fully consumed
+        // 1. SUCCESS: Pattern fully consumed
         if (pi == p.len) return true;
 
-        // 2. End Anchor: $ must match end of text
+        // 2. END ANCHOR: $ must match end of text
         if (p.data[pi] == '$') return ti == t.len;
 
-        // 3. Modifier Detection (* or +)
+        // 3. MODIFIER DETECTION (* or +)
         if (pi + 1 < p.len && (p.data[pi+1] == '*' || p.data[pi+1] == '+')) {
             char mod = p.data[pi+1];
-            
-            // For '+', we must match at least once before proceeding
-            if (mod == '+' && (ti >= t.len || (p.data[pi] != t.data[ti] && p.data[pi] != '.'))) {
-                goto backtrack;
-            }
+            size_t start_ti = ti;
 
-            // Save state: s_pi points to the char, s_ti to current text
-            s_pi = pi;
-            s_ti = ti;
-
-            // Greedy: Consume ALL matching characters right now
+            // Greedy: Consume as much as possible
             while (ti < t.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
                 ti++;
             }
-            
-            // After consuming all, move pattern to the next part
-            pi += 2;
+
+            // '+' validation: must have matched at least once
+            if (mod == '+' && ti == start_ti) goto backtrack;
+
+            // Save state for this specific quantifier
+            s_pi = pi;
+            s_ti = start_ti;
+            match_count = ti - start_ti;
+
+            pi += 2; // Move pattern past 'x*'
             continue;
         }
 
-        // 4. Basic Character Match
+        // 4. BASIC CHARACTER MATCH
         if (ti < t.len && pi < p.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
             pi++;
             ti++;
@@ -428,15 +428,16 @@ static bool sv_match_internal(StringView p, StringView t) {
         }
 
     backtrack:
-        // 5. Backtrack Logic: 
-        // If we fail, but we just came from a quantifier, 
-        // give back ONE character and try the rest of the pattern again.
-        if (s_pi != (size_t)-1 && s_ti < ti) {
-            ti--; // Step back one char in the text
-            pi = s_pi + 2; // Re-attempt pattern after the quantifier
+        // 5. BACKTRACK LOGIC
+        // If we have a saved quantifier and it has characters left to "give back"
+        if (s_pi != (size_t)-1 && match_count > 0) {
+            match_count--;
+            ti = s_ti + match_count; // Set text pointer to one char less
+            pi = s_pi + 2;           // Reset pattern to right after the quantifier
             continue;
         }
 
+        // If we reach here, no match is possible at this starting position
         return false;
     }
 }
