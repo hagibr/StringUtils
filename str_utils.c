@@ -391,7 +391,13 @@ static bool sv_match_internal(StringView p, StringView t) {
     size_t s_pi = (size_t)-1, s_ti = (size_t)-1;
     size_t match_count = 0; // How many chars the current quantifier consumed
 
+    // Safety limit: practical value against a complex pattern
+    size_t loop_limit = p.len * 2 +  t.len; 
+    size_t current_loops = 0;
+
     while (true) {
+        if (++current_loops > loop_limit) return false; // Emergency break
+
         // 1. SUCCESS: Pattern fully consumed
         if (pi == p.len) return true;
 
@@ -432,6 +438,8 @@ static bool sv_match_internal(StringView p, StringView t) {
         // If we have a saved quantifier and it has characters left to "give back"
         if (s_pi != (size_t)-1 && match_count > 0) {
             match_count--;
+            // Each time we hit this, we are effectively 
+            // executing one "backtrack loop"
             ti = s_ti + match_count; // Set text pointer to one char less
             pi = s_pi + 2;           // Reset pattern to right after the quantifier
             continue;
