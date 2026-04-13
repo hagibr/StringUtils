@@ -373,54 +373,59 @@ StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len}; // The view shares the builder's buffer — no copy
 }
 
-static bool match_here(StringView pattern, StringView text);
+static bool sv_match_internal(StringView p, StringView t) {
+    size_t pi = 0, ti = 0, s_pi = (size_t)-1, s_ti = (size_t)-1;
 
-static bool match_star(char c, StringView pattern, StringView text) {
-    do {
-        // Try to match the rest of the pattern against the current text position (zero occurrences of c)
-        if (match_here(pattern, text)) return true;
+    while (ti < t.len) {
+        // Lookahead for repetition modifiers (* and +)
+        if (pi + 1 < p.len && (p.data[pi+1] == '*' || p.data[pi+1] == '+')) {
+            char mod = p.data[pi+1];
+            // If it's '+', the first character MUST match
+            if (mod == '+' && !(p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
+                return false;
+            }
 
-        // Stop if text is exhausted or the current char doesn't match c ('.' matches anything)
-        if (text.len == 0 || (c != '.' && *text.data != c)) break;
-
-        // Consume one occurrence of c and retry
-        text.data++;
-        text.len--;
-    } while (true);
-    return false;
-}
-
-static bool match_here(StringView pattern, StringView text) {
-    if (pattern.len == 0) return true; // Pattern exhausted — everything matched
-
-    // '*' quantifier: delegate to match_star with the char before '*' and the rest of the pattern
-    if (pattern.len >= 2 && pattern.data[1] == '*') {
-        return match_star(pattern.data[0], (StringView){pattern.data + 2, pattern.len - 2}, text);
+            s_pi = pi; s_ti = ti; 
+            pi += 2; // Tenta o caminho mais curto (zero para *, um para + já validado acima)
+            if (mod == '+') {
+                ti++; // O '+' consome o obrigatório
+            }
+            continue;
+        }
+        // Simple match
+        if (pi < p.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) { 
+            pi++; 
+            ti++; 
+            continue;
+        }
+        // Backtrack
+        if (s_pi != (size_t)-1) {
+            if (p.data[s_pi] == '.' || t.data[s_ti] == p.data[s_pi]) {
+                s_ti++;
+                ti = s_ti;
+                pi = s_pi + 2;
+                continue;
+            }
+        }
+        return false;
     }
-
-    // '$' at end of pattern: match only if text is also exhausted
-    if (pattern.len == 1 && pattern.data[0] == '$') {
-        return text.len == 0;
+    while (pi + 1 < p.len && p.data[pi+1] == '*') {
+        pi += 2; // Consume the tail of '*'
     }
-
-    // '.' matches any single character; otherwise require an exact character match
-    if (text.len > 0 && (pattern.data[0] == '.' || pattern.data[0] == *text.data)) {
-        return match_here((StringView){pattern.data + 1, pattern.len - 1}, (StringView){text.data + 1, text.len - 1});
+    if (pi < p.len && p.data[pi] == '$') {
+      return ti == t.len;
     }
-
-    return false;
+    return pi == p.len;
 }
 
 bool sv_match(StringView pattern, StringView text) {
-    // '^' anchors the match to the start — skip it and match only at position 0
-    if (pattern.len > 0 && pattern.data[0] == '^') return match_here((StringView){pattern.data + 1, pattern.len - 1}, text);
-
-    // Without '^', try matching at every position in the text
-    while (true) {
-        if (match_here(pattern, text)) return true;
-        if (text.len == 0) break; // No more positions to try
-        text.data++;
-        text.len--;
+    if (pattern.len > 0 && pattern.data[0] == '^') {
+        return sv_match_internal((StringView){pattern.data+1, pattern.len-1}, text);
+    }
+    for (size_t i = 0; i <= text.len; i++) {
+        if (sv_match_internal(pattern, (StringView){text.data+i, text.len-i})) {
+            return true;
+        } 
     }
     return false;
 }
