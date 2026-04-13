@@ -392,7 +392,7 @@ static bool sv_match_internal(StringView p, StringView t) {
     size_t match_count = 0; // How many chars the current quantifier consumed
 
     // Safety limit: practical value against a complex pattern
-    size_t loop_limit = p.len * 2 +  t.len; 
+    size_t loop_limit = p.len * 2 + t.len; 
     size_t current_loops = 0;
 
     while (true) {
