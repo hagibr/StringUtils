@@ -373,57 +373,84 @@ StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len}; // The view shares the builder's buffer — no copy
 }
 
+/**
+ * Internal engine for regex matching.
+ * Uses a backtracking pointer approach instead of recursion to save stack.
+ */
 static bool sv_match_internal(StringView p, StringView t) {
-    size_t pi = 0, ti = 0, s_pi = (size_t)-1, s_ti = (size_t)-1;
+    size_t pi = 0, ti = 0;
+    size_t s_pi = (size_t)-1, s_ti = (size_t)-1; // Backtrack pointers
 
-    while (ti < t.len) {
-        // Lookahead for repetition modifiers (* and +)
+    while (ti <= t.len) {
+        // SUCCESS: Pattern reached its end (Prefix match satisfied)
+        if (pi == p.len) {
+            return true;
+        }
+
+        // END ANCHOR: '$' matches only at the end of text
+        if (p.data[pi] == '$') {
+            return ti == t.len;
+        }
+
+        // TEXT ENDED: Check if pattern still has '*' modifiers left
+        if (ti == t.len) {
+            if (pi + 1 < p.len && p.data[pi+1] == '*') {
+                pi += 2;
+                continue;
+            }
+            return false;
+        }
+
+        // REPETITION: Check for '*' or '+'
         if (pi + 1 < p.len && (p.data[pi+1] == '*' || p.data[pi+1] == '+')) {
             char mod = p.data[pi+1];
-            // If it's '+', the first character MUST match
-            if (mod == '+' && !(p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
+            bool match = (p.data[pi] == t.data[ti] || p.data[pi] == '.');
+            
+            if (mod == '+' && !match) {
                 return false;
             }
 
-            s_pi = pi; s_ti = ti; 
-            pi += 2; // Tenta o caminho mais curto (zero para *, um para + já validado acima)
-            if (mod == '+') {
-                ti++; // O '+' consome o obrigatório
+            s_pi = pi; s_ti = ti; // Save state for backtracking
+            pi += 2;              // Try the shortest path first
+            if (mod == '+') {     // '+' requires at least one match
+                ti++; 
             }
             continue;
         }
-        // Simple match
-        if (pi < p.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) { 
-            pi++; 
-            ti++; 
+
+        // BASIC MATCH: Character or wildcard '.'
+        if (p.data[pi] == t.data[ti] || p.data[pi] == '.') {
+            pi++; ti++;
             continue;
         }
-        // Backtrack
+
+        // BACKTRACK: If match failed, try consuming more text with previous modifier
         if (s_pi != (size_t)-1) {
             if (p.data[s_pi] == '.' || t.data[s_ti] == p.data[s_pi]) {
-                s_ti++;
-                ti = s_ti;
+                s_ti++; 
+                ti = s_ti; 
                 pi = s_pi + 2;
                 continue;
             }
         }
         return false;
     }
-    while (pi + 1 < p.len && p.data[pi+1] == '*') {
-        pi += 2; // Consume the tail of '*'
-    }
-    if (pi < p.len && p.data[pi] == '$') {
-      return ti == t.len;
-    }
     return pi == p.len;
 }
 
 bool sv_match(StringView pattern, StringView text) {
-    if (pattern.len > 0 && pattern.data[0] == '^') {
-        return sv_match_internal((StringView){pattern.data+1, pattern.len-1}, text);
+    if (pattern.len == 0) return text.len == 0;
+
+    // START ANCHOR: '^' forces match at index 0
+    if ((pattern.data[0] == '^')) {
+        StringView p_sub = {pattern.data + 1, pattern.len - 1};
+        return sv_match_internal(p_sub, text);
     }
+
+    // SEARCH: Slide through text if no '^' is present
     for (size_t i = 0; i <= text.len; i++) {
-        if (sv_match_internal(pattern, (StringView){text.data+i, text.len-i})) {
+        StringView t_sub = {text.data + i, text.len - i};
+        if (sv_match_internal(pattern, t_sub)) {
             return true;
         } 
     }

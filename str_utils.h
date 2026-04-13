@@ -510,12 +510,12 @@ StringView sb_to_view(const StaticBuilder *sb);
  * Supported metacharacters:
  *   '.'  — matches any single character.
  *   '*'  — matches zero or more occurrences of the preceding character.
+ *   '+'  — matches one or more occurrences of the preceding character.
  *   '^'  — anchors the match to the start of the text.
  *   '$'  — anchors the match to the end of the text.
  *
  * Without '^', the pattern is searched across all positions in the text.
- * Character classes ([a-z]), '+', '?', and escaped metacharacters are not supported.
- * Warning: this engine is recursive — avoid complex patterns on stack-constrained targets.
+ * Character classes ([a-z]), '?', and escaped metacharacters are not supported.
  *
  * Example:
  *   sv_match(sv_from_cstr("a.c"),    sv_from_cstr("abc"));     // true  ('.' matches 'b');
