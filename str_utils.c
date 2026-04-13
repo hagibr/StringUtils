@@ -373,69 +373,72 @@ StringView sb_to_view(const StaticBuilder *sb) {
     return (StringView){sb->data, sb->len}; // The view shares the builder's buffer — no copy
 }
 
-/**
- * Internal engine for regex matching.
- * Uses a backtracking pointer approach instead of recursion to save stack.
+/* * sv_match_internal:
+ * Performs an iterative regex match using a greedy-with-backtrack strategy.
+ * * Logic:
+ * 1. When a modifier (* or +) is found, it saves the current position and 
+ * consumes as many matching characters as possible (Greedy).
+ * 2. It then attempts to match the remainder of the pattern.
+ * 3. If the remainder fails, it "backtracks" by giving back one character 
+ * at a time from the greedy match and retrying the remainder.
+ * * This avoids recursion depth issues while supporting complex patterns 
+ * like "a*b*c*d" or "a*a".
  */
 static bool sv_match_internal(StringView p, StringView t) {
     size_t pi = 0, ti = 0;
-    size_t s_pi = (size_t)-1, s_ti = (size_t)-1; // Backtrack pointers
+    
+    // Save points for the CURRENT modifier being processed
+    size_t s_pi = (size_t)-1, s_ti = (size_t)-1;
 
-    while (ti <= t.len) {
-        // SUCCESS: Pattern reached its end (Prefix match satisfied)
-        if (pi == p.len) {
-            return true;
-        }
+    while (true) {
+        // 1. Success: Pattern fully consumed
+        if (pi == p.len) return true;
 
-        // END ANCHOR: '$' matches only at the end of text
-        if (p.data[pi] == '$') {
-            return ti == t.len;
-        }
+        // 2. End Anchor: $ must match end of text
+        if (p.data[pi] == '$') return ti == t.len;
 
-        // TEXT ENDED: Check if pattern still has '*' modifiers left
-        if (ti == t.len) {
-            if (pi + 1 < p.len && p.data[pi+1] == '*') {
-                pi += 2;
-                continue;
-            }
-            return false;
-        }
-
-        // REPETITION: Check for '*' or '+'
+        // 3. Modifier Detection (* or +)
         if (pi + 1 < p.len && (p.data[pi+1] == '*' || p.data[pi+1] == '+')) {
             char mod = p.data[pi+1];
-            bool match = (p.data[pi] == t.data[ti] || p.data[pi] == '.');
             
-            if (mod == '+' && !match) {
-                return false;
+            // For '+', we must match at least once before proceeding
+            if (mod == '+' && (ti >= t.len || (p.data[pi] != t.data[ti] && p.data[pi] != '.'))) {
+                goto backtrack;
             }
 
-            s_pi = pi; s_ti = ti; // Save state for backtracking
-            pi += 2;              // Try the shortest path first
-            if (mod == '+') {     // '+' requires at least one match
-                ti++; 
+            // Save state: s_pi points to the char, s_ti to current text
+            s_pi = pi;
+            s_ti = ti;
+
+            // Greedy: Consume ALL matching characters right now
+            while (ti < t.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
+                ti++;
             }
+            
+            // After consuming all, move pattern to the next part
+            pi += 2;
             continue;
         }
 
-        // BASIC MATCH: Character or wildcard '.'
-        if (p.data[pi] == t.data[ti] || p.data[pi] == '.') {
-            pi++; ti++;
+        // 4. Basic Character Match
+        if (ti < t.len && pi < p.len && (p.data[pi] == t.data[ti] || p.data[pi] == '.')) {
+            pi++;
+            ti++;
             continue;
         }
 
-        // BACKTRACK: If match failed, try consuming more text with previous modifier
-        if (s_pi != (size_t)-1) {
-            if (p.data[s_pi] == '.' || t.data[s_ti] == p.data[s_pi]) {
-                s_ti++; 
-                ti = s_ti; 
-                pi = s_pi + 2;
-                continue;
-            }
+    backtrack:
+        // 5. Backtrack Logic: 
+        // If we fail, but we just came from a quantifier, 
+        // give back ONE character and try the rest of the pattern again.
+        if (s_pi != (size_t)-1 && s_ti < ti) {
+            ti--; // Step back one char in the text
+            pi = s_pi + 2; // Re-attempt pattern after the quantifier
+            continue;
         }
+
         return false;
     }
-    return pi == p.len;
 }
 
 bool sv_match(StringView pattern, StringView text) {
